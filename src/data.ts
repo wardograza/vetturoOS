@@ -1,0 +1,508 @@
+import type {
+  AlertItem,
+  BrandDecision,
+  CommunicationItem,
+  ConfigItem,
+  CopilotMessage,
+  InviteRecord,
+  MetricCard,
+  Persona,
+  PersonaId,
+  TaskItem,
+  UserAccount,
+  VaultItem,
+} from "./types";
+
+export const personas: Persona[] = [
+  {
+    id: "super_admin",
+    label: "Super Admin",
+    title: "Control Tower",
+    focus: "Approvals, memory integrity, user invites, and system-wide interventions.",
+    heroMetric: "Pending Memory Approvals",
+    heroValue: "3 items",
+    summary: "Core memory is gated until approved. One lease and two budgets need review.",
+  },
+  {
+    id: "mall_manager",
+    label: "Mall Manager",
+    title: "Asset Health Console",
+    focus: "Spill-over tasks, compliance, and operational resolution speed.",
+    heroMetric: "Spill-over Tasks",
+    heroValue: "17 open",
+    summary: "Facilities and escalations are driving the most operational risk today.",
+  },
+  {
+    id: "leasing",
+    label: "Leasing Manager",
+    title: "Leasing Intelligence Deck",
+    focus: "Vacancy monetization, brand fit, and cannibalization control.",
+    heroMetric: "Vacancy SBA",
+    heroValue: "18,420 sq ft",
+    summary: "Three near-fit brands are ready for review with fixed Decision DNA scoring.",
+  },
+  {
+    id: "finance",
+    label: "Finance",
+    title: "Revenue Recovery Desk",
+    focus: "Recoverable revenue, lease escalations, and collection follow-through.",
+    heroMetric: "Recoverable Revenue",
+    heroValue: "Rs 12.4L",
+    summary: "Four revenue leaks are actionable and tied to tracked communication threads.",
+  },
+  {
+    id: "facilities",
+    label: "Facilities",
+    title: "Incident Response Board",
+    focus: "Incident intake, SLA adherence, and closure tracking across field teams.",
+    heroMetric: "Open Incidents",
+    heroValue: "9 live",
+    summary: "Two tasks are nearing SLA breach and one awaits proof before closure.",
+  },
+];
+
+export const metricCardsByPersona: Record<PersonaId, MetricCard[]> = {
+  super_admin: [
+    {
+      id: "memory-queue",
+      label: "Pending Memory Queue",
+      value: "3 items",
+      change: "1 edited today",
+      tone: "warn",
+      detail: "No uploaded file becomes trusted AI memory until it is explicitly approved.",
+    },
+    {
+      id: "invites",
+      label: "Active Invites",
+      value: "6 users",
+      change: "Super admin only",
+      tone: "neutral",
+      detail: "Invite-only access is enforced, with temporary passwords rotated on first login.",
+    },
+    {
+      id: "governance",
+      label: "Governance Events",
+      value: "128 tracked",
+      change: "Full audit trail",
+      tone: "good",
+      detail: "Memory edits, approvals, and outbound escalations are all timestamped.",
+    },
+  ],
+  mall_manager: [
+    {
+      id: "spillover",
+      label: "Spill-over Tasks",
+      value: "17 open",
+      change: "5 due today",
+      tone: "warn",
+      detail: "Delayed items are concentrated in facilities approvals and escalations.",
+    },
+    {
+      id: "asset-health",
+      label: "Asset Health",
+      value: "84%",
+      change: "+6 pts",
+      tone: "good",
+      detail: "Fire safety and housekeeping improved after last week’s interventions.",
+    },
+    {
+      id: "comm-visibility",
+      label: "Escalated Threads",
+      value: "4 tracked",
+      change: "2 need manager action",
+      tone: "warn",
+      detail: "Every bot-initiated message has a visible status trail and SLA window.",
+    },
+  ],
+  leasing: [
+    {
+      id: "vacancy",
+      label: "Vacancy SBA",
+      value: "18,420 sq ft",
+      change: "5 units active",
+      tone: "neutral",
+      detail: "Two F&B, one athleisure, and two beauty opportunities are open.",
+    },
+    {
+      id: "pipeline",
+      label: "Brand Pipeline",
+      value: "14 candidates",
+      change: "3 high-fit",
+      tone: "good",
+      detail: "Shortlist is prioritized using fixed category, technical, and financial weights.",
+    },
+    {
+      id: "risk",
+      label: "Cannibalization Risk",
+      value: "1 high-risk flag",
+      change: "Within 50m radius",
+      tone: "warn",
+      detail: "One F&B prospect overlaps too closely with the existing cafe cluster.",
+    },
+  ],
+  finance: [
+    {
+      id: "recoverable-revenue",
+      label: "Recoverable Revenue",
+      value: "Rs 12.4L",
+      change: "+18% this cycle",
+      tone: "good",
+      detail: "Driven by missed rent escalations and open reconciliation items.",
+    },
+    {
+      id: "collections",
+      label: "Collection Threads",
+      value: "7 active",
+      change: "3 read, not actioned",
+      tone: "warn",
+      detail: "Tracked across email and WhatsApp with event-level delivery statuses.",
+    },
+    {
+      id: "audit",
+      label: "Recovery Evidence",
+      value: "98 events logged",
+      change: "Lease-backed",
+      tone: "neutral",
+      detail: "Each recovery workflow cites lease clauses and tracks escalation history.",
+    },
+  ],
+  facilities: [
+    {
+      id: "open-incidents",
+      label: "Open Incidents",
+      value: "9 live",
+      change: "2 near SLA",
+      tone: "warn",
+      detail: "The system is routing issues to the lowest-load eligible owner first.",
+    },
+    {
+      id: "awaiting-proof",
+      label: "Awaiting Proof",
+      value: "3 tasks",
+      change: "Optional by type",
+      tone: "neutral",
+      detail: "Proof is optional globally, but still recommended for high-risk facilities work.",
+    },
+    {
+      id: "closures",
+      label: "Closure Rate",
+      value: "81%",
+      change: "+9 pts",
+      tone: "good",
+      detail: "Response quality improved after automated reassignment of unowned incidents.",
+    },
+  ],
+};
+
+export const alerts: AlertItem[] = [
+  {
+    id: "alert-1",
+    title: "Missed rent escalation for Unit 205",
+    severity: "P1",
+    owner: "Finance",
+    status: "Communication opened, no action yet",
+    nextAction: "Escalate to mall manager and attach lease clause citation.",
+  },
+  {
+    id: "alert-2",
+    title: "Budget variance needs approval before memory sync",
+    severity: "P2",
+    owner: "Super Admin",
+    status: "Pending approval",
+    nextAction: "Review parsed budget fields and approve core memory update.",
+  },
+  {
+    id: "alert-3",
+    title: "Vacant F&B unit has two high-fit candidates",
+    severity: "P3",
+    owner: "Leasing",
+    status: "Decision review needed",
+    nextAction: "Open Decision DNA and compare fit against unit constraints.",
+  },
+];
+
+export const tasksToday: TaskItem[] = [
+  {
+    id: "task-1",
+    title: "Resolve water leak near KFC",
+    department: "Facilities",
+    assignee: "Arjun",
+    status: "In Progress",
+    proofRequired: true,
+    slaDue: "Due in 42m",
+  },
+  {
+    id: "task-2",
+    title: "Approve lease ingestion for Unit 205",
+    department: "Super Admin",
+    assignee: "Priya",
+    status: "Awaiting Approval",
+    proofRequired: false,
+    slaDue: "Review by 5:00 PM",
+  },
+  {
+    id: "task-3",
+    title: "Launch level-1 reminders for overdue escalations",
+    department: "Finance",
+    assignee: "Automation",
+    status: "Assigned",
+    proofRequired: false,
+    slaDue: "Send by 1:30 PM",
+  },
+];
+
+export const spilloverTasks: TaskItem[] = [
+  {
+    id: "spill-1",
+    title: "HVAC inspection closure proof pending",
+    department: "Facilities",
+    assignee: "Ritika",
+    status: "Awaiting Proof",
+    proofRequired: true,
+    slaDue: "Proof requested yesterday",
+  },
+  {
+    id: "spill-2",
+    title: "Reassign unresolved signage fault",
+    department: "Facilities",
+    assignee: "Unassigned",
+    status: "Reopened",
+    proofRequired: false,
+    slaDue: "Breach in 3h",
+  },
+];
+
+export const communications: CommunicationItem[] = [
+  {
+    id: "comm-1",
+    recipient: "Blue Tokai",
+    channel: "WhatsApp",
+    purpose: "Lease Escalation",
+    subject: "Rent escalation follow-up for Unit 205",
+    status: "Read",
+    escalation: "Level 2 in 2h",
+    requiresAction: true,
+    sla: "Breach in 2h",
+    lastUpdated: "26 min ago",
+    events: [
+      { label: "Queued", at: "10:02 AM", complete: true },
+      { label: "Sent", at: "10:03 AM", complete: true },
+      { label: "Delivered", at: "10:04 AM", complete: true },
+      { label: "Read", at: "10:17 AM", complete: true },
+      { label: "Actioned", at: "Waiting", complete: false },
+    ],
+  },
+  {
+    id: "comm-2",
+    recipient: "Uniqlo India",
+    channel: "Email",
+    purpose: "Brand Outreach",
+    subject: "Nexus Koramangala vacancy fit review",
+    status: "Opened",
+    escalation: "Leasing follow-up due tomorrow",
+    requiresAction: true,
+    sla: "Follow-up in 18h",
+    lastUpdated: "51 min ago",
+    events: [
+      { label: "Queued", at: "9:10 AM", complete: true },
+      { label: "Sent", at: "9:11 AM", complete: true },
+      { label: "Delivered", at: "9:12 AM", complete: true },
+      { label: "Opened", at: "9:38 AM", complete: true },
+      { label: "Clicked", at: "Waiting", complete: false },
+    ],
+  },
+  {
+    id: "comm-3",
+    recipient: "Lifestyle",
+    channel: "WhatsApp",
+    purpose: "Priority Escalation",
+    subject: "Escalation on unresolved common-area issue",
+    status: "Actioned",
+    escalation: "Closed",
+    requiresAction: false,
+    sla: "Resolved",
+    lastUpdated: "1h ago",
+    events: [
+      { label: "Queued", at: "8:15 AM", complete: true },
+      { label: "Sent", at: "8:16 AM", complete: true },
+      { label: "Delivered", at: "8:16 AM", complete: true },
+      { label: "Read", at: "8:19 AM", complete: true },
+      { label: "Actioned", at: "8:42 AM", complete: true },
+    ],
+  },
+  {
+    id: "comm-4",
+    recipient: "Mall Manager",
+    channel: "Email",
+    purpose: "Approval Request",
+    subject: "Approve NKM Budget memory update",
+    status: "Delivered",
+    escalation: "Super admin follow-up in 6h",
+    requiresAction: true,
+    sla: "Review in 6h",
+    lastUpdated: "12 min ago",
+    events: [
+      { label: "Queued", at: "11:40 AM", complete: true },
+      { label: "Sent", at: "11:41 AM", complete: true },
+      { label: "Delivered", at: "11:42 AM", complete: true },
+      { label: "Opened", at: "Waiting", complete: false },
+      { label: "Actioned", at: "Waiting", complete: false },
+    ],
+  },
+];
+
+export const brandDecisions: BrandDecision[] = [
+  {
+    brand: "Starbucks",
+    suitability: 94,
+    categorySynergy: 96,
+    technicalFit: 92,
+    financialHealth: 93,
+    cannibalizationRisk: "12% moderate",
+    recommendation: "Proceed with deeper proximity analysis and outreach.",
+  },
+  {
+    brand: "Uniqlo",
+    suitability: 89,
+    categorySynergy: 91,
+    technicalFit: 88,
+    financialHealth: 87,
+    cannibalizationRisk: "Low",
+    recommendation: "Strong candidate for the east wing vacancy.",
+  },
+  {
+    brand: "The Face Shop",
+    suitability: 82,
+    categorySynergy: 84,
+    technicalFit: 80,
+    financialHealth: 81,
+    cannibalizationRisk: "Low",
+    recommendation: "Viable, with upside if the beauty cluster expands.",
+  },
+];
+
+export const vaultItems: VaultItem[] = [
+  {
+    id: "vault-1",
+    name: "Unit 205 Lease.pdf",
+    type: "Lease",
+    status: "Pending Approval",
+    owner: "Super Admin",
+  },
+  {
+    id: "vault-2",
+    name: "NKM Budget.xlsx",
+    type: "Budget",
+    status: "Requires Edit",
+    owner: "Super Admin",
+  },
+  {
+    id: "vault-3",
+    name: "Koramangala Budget 2025.xlsx",
+    type: "Budget",
+    status: "Approved for Core Memory",
+    owner: "Super Admin",
+  },
+];
+
+export const copilotMessages: CopilotMessage[] = [
+  {
+    role: "assistant",
+    content:
+      "I’ve identified Rs 12.4L in recoverable revenue, 3 active escalation threads, and 1 pending memory approval that blocks lease-backed recommendations.",
+  },
+  {
+    role: "user",
+    content: "Show me the highest-value recovery item and whether the communication was opened.",
+  },
+  {
+    role: "assistant",
+    content:
+      "Unit 205 is still the highest-value gap. The WhatsApp escalation was delivered and read, but not actioned, so the system is ready to trigger the next internal escalation.",
+  },
+];
+
+export const userAccounts: UserAccount[] = [
+  {
+    id: "user-1",
+    fullName: "Ananya Rao",
+    email: "ananya@vetturo.app",
+    role: "super_admin",
+    status: "Active",
+    mustResetPassword: false,
+  },
+  {
+    id: "user-2",
+    fullName: "Rahul Menon",
+    email: "rahul@nexuskoramangala.com",
+    role: "mall_manager",
+    status: "Active",
+    mustResetPassword: false,
+  },
+  {
+    id: "user-3",
+    fullName: "Priya Shah",
+    email: "priya@nexuskoramangala.com",
+    role: "finance",
+    status: "Invited",
+    mustResetPassword: true,
+  },
+  {
+    id: "user-4",
+    fullName: "Neha Iyer",
+    email: "neha@nexuskoramangala.com",
+    role: "facilities",
+    status: "Active",
+    mustResetPassword: false,
+  },
+];
+
+export const inviteRecords: InviteRecord[] = [
+  {
+    id: "invite-1",
+    email: "priya@nexuskoramangala.com",
+    role: "finance",
+    invitedBy: "Ananya Rao",
+    status: "Pending",
+    expiresAt: "29 Mar 2026",
+  },
+  {
+    id: "invite-2",
+    email: "leasing@nexuskoramangala.com",
+    role: "leasing",
+    invitedBy: "Ananya Rao",
+    status: "Accepted",
+    expiresAt: "24 Mar 2026",
+  },
+];
+
+export const configItems: ConfigItem[] = [
+  {
+    id: "cfg-1",
+    label: "Backend mode",
+    description: "Switches between local mock state and live Supabase-backed execution.",
+    value: "Mock until env vars are set",
+    status: "Mock",
+  },
+  {
+    id: "cfg-2",
+    label: "Email provider",
+    description: "Outbound communication provider for bot-triggered email workflows.",
+    value: "Pending provider selection",
+    status: "Pending",
+  },
+  {
+    id: "cfg-3",
+    label: "WhatsApp provider",
+    description: "Outbound WhatsApp workflow integration for nudges and escalations.",
+    value: "Pending provider selection",
+    status: "Pending",
+  },
+  {
+    id: "cfg-4",
+    label: "Memory policy",
+    description: "Unapproved files may be visible but are blocked from the truth layer.",
+    value: "Configured for strict approval gate",
+    status: "Configured",
+  },
+];
