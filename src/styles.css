@@ -2,19 +2,19 @@
   color-scheme: light;
   font-family:
     "Avenir Next", "SF Pro Display", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
-  --bg: #f6efe7;
-  --surface: rgba(255, 255, 255, 0.88);
-  --surface-strong: #fffaf5;
-  --surface-soft: #f7efe8;
-  --sidebar-top: #165d4a;
-  --sidebar-bottom: #114838;
-  --text: #234f46;
-  --text-soft: #6f837d;
-  --line: rgba(35, 79, 70, 0.12);
-  --shadow-soft: 0 16px 34px rgba(27, 60, 54, 0.08);
-  --good: #1f7a5c;
-  --warn: #b37a34;
-  --bad: #a04d4d;
+  --bg: #3e000c;
+  --surface: rgba(92, 20, 33, 0.72);
+  --surface-strong: #5a0d1d;
+  --surface-soft: #4a0817;
+  --sidebar-top: #450011;
+  --sidebar-bottom: #2f000b;
+  --text: #f7dde3;
+  --text-soft: #d0aab3;
+  --line: rgba(247, 221, 227, 0.14);
+  --shadow-soft: 0 16px 34px rgba(12, 0, 3, 0.34);
+  --good: #d88ca1;
+  --warn: #f0bf83;
+  --bad: #ff9b9b;
 }
 
 * {
@@ -30,8 +30,8 @@ body,
 body {
   margin: 0;
   background:
-    radial-gradient(circle at top center, rgba(201, 180, 144, 0.18), transparent 30%),
-    linear-gradient(180deg, var(--bg) 0%, #f3ebe2 100%);
+    radial-gradient(circle at top center, rgba(134, 24, 52, 0.2), transparent 30%),
+    linear-gradient(180deg, var(--bg) 0%, #250008 100%);
   color: var(--text);
   font-size: 14px;
 }
@@ -213,9 +213,9 @@ small {
 
 .secondary-button,
 .icon-button {
-  background: rgba(255, 255, 255, 0.78);
+  background: rgba(255, 240, 244, 0.92);
   border-color: var(--line);
-  color: var(--text);
+  color: #450011;
 }
 
 .nav-button:hover,
@@ -476,7 +476,7 @@ small {
 }
 
 .bot-message.user {
-  background: rgba(31, 113, 90, 0.1);
+  background: rgba(255, 214, 225, 0.12);
 }
 
 .bot-form {
