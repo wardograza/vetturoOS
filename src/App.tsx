@@ -1,83 +1,87 @@
+import { useState } from "react";
 import {
-  brandDecisions,
-  metricCardsByPersona,
-  personas,
+alerts,
+brandDecisions,
+metricCardsByPersona,
+personas,
+spilloverTasks,
 } from "./data";
+import type { PersonaId } from "./types";
 
 function App() {
-  const activePersona = "mall_manager";
+const [activePersona] = useState<PersonaId>("mall_manager");
 
-  const active = personas.find((p) => p.id === activePersona) || personas[0];
-  const metrics = metricCardsByPersona[activePersona] || [];
+const active = personas.find((p) => p.id === activePersona) || personas[0];
+const metrics = metricCardsByPersona[activePersona] || [];
 
-  const primaryCommunication = {
-    subject: "No communication available",
-    recipient: "—",
-    channel: "—",
-    status: "—",
-  };
+// SAFE FALLBACK DATA (no crashes ever)
+const communications = [
+{
+subject: "Escalation on unresolved common-area issue",
+recipient: "Tenant",
+channel: "WhatsApp",
+status: "Pending",
+events: [{ label: "Sent" }, { label: "Opened" }],
+},
+];
 
-  const primaryDecision =
-    brandDecisions?.[0] || {
-      brand: "No data",
-      recommendation: "No recommendation available",
-    };
+const primaryCommunication = communications[0];
 
-  return (
-    <div style={{ display: "flex", minHeight: "100vh", fontFamily: "sans-serif" }}>
-      
-      {/* Sidebar */}
-      <aside style={{ width: 200, background: "#111", color: "#fff", padding: 20 }}>
-        <h3>Vetturo</h3>
-        <p>{active?.label || "User"}</p>
-      </aside>
+const primaryDecision =
+brandDecisions?.[0] || {
+brand: "No data",
+recommendation: "No recommendation available",
+};
 
-      {/* Main */}
-      <main style={{ flex: 1, padding: 20 }}>
-        <h2>Dashboard</h2>
+return ( <div className="app-shell">
 
-        {/* Metrics */}
-        <div style={{ display: "flex", gap: 16, marginBottom: 20 }}>
-          {metrics.map((m: any) => (
-            <div
-              key={m.id}
-              style={{
-                padding: 12,
-                border: "1px solid #ddd",
-                borderRadius: 8,
-                minWidth: 120,
-              }}
-            >
-              <div>{m.label}</div>
-              <strong>{m.value}</strong>
-            </div>
-          ))}
+```
+  {/* Sidebar */}
+  <aside className="sidebar">
+    <h2>Vetturo</h2>
+    <p>{active?.label}</p>
+  </aside>
+
+  {/* Main */}
+  <main className="main-content">
+    <h1>Dashboard</h1>
+
+    {/* Metrics */}
+    <section className="metrics">
+      {metrics.map((metric) => (
+        <div className="metric-card" key={metric.id}>
+          <span>{metric.label}</span>
+          <strong>{metric.value}</strong>
         </div>
+      ))}
+    </section>
 
-        {/* Communication Card */}
-        <div style={{ border: "1px solid #ddd", padding: 16, borderRadius: 8 }}>
-          <h3>{primaryCommunication.subject}</h3>
-          <p>
-            {primaryCommunication.recipient} • {primaryCommunication.channel}
-          </p>
-          <strong>{primaryCommunication.status}</strong>
-        </div>
+    {/* Communication */}
+    <section className="card">
+      <h3>{primaryCommunication.subject}</h3>
+      <p>
+        {primaryCommunication.recipient} •{" "}
+        {primaryCommunication.channel}
+      </p>
+      <strong>{primaryCommunication.status}</strong>
 
-        {/* Decision Card */}
-        <div
-          style={{
-            border: "1px solid #ddd",
-            padding: 16,
-            borderRadius: 8,
-            marginTop: 20,
-          }}
-        >
-          <h3>{primaryDecision.brand}</h3>
-          <p>{primaryDecision.recommendation}</p>
-        </div>
-      </main>
-    </div>
-  );
+      <div className="events">
+        {primaryCommunication.events.map((e, i) => (
+          <span key={i}>{e.label}</span>
+        ))}
+      </div>
+    </section>
+
+    {/* Brand Decision */}
+    <section className="card">
+      <h3>{primaryDecision.brand}</h3>
+      <p>{primaryDecision.recommendation}</p>
+    </section>
+  </main>
+</div>
+```
+
+);
 }
 
 export default App;
