@@ -87,6 +87,19 @@ export default async function handler(req, res) {
     const organization = organizationResult.error ? null : organizationResult.data;
     const tasks = taskResult.error ? [] : taskResult.data ?? [];
     const documents = documentResult.error ? [] : documentResult.data ?? [];
+    const approvedFinanceDocument = documents.find(
+      (document) =>
+        document.status === "approved" &&
+        document.source_payload &&
+        (Array.isArray(document.source_payload.financeSummaryRows) ||
+          Array.isArray(document.source_payload.rentRollRows)),
+    );
+    const financeSummaryRows = Array.isArray(approvedFinanceDocument?.source_payload?.financeSummaryRows)
+      ? approvedFinanceDocument.source_payload.financeSummaryRows
+      : [];
+    const rentRollRows = Array.isArray(approvedFinanceDocument?.source_payload?.rentRollRows)
+      ? approvedFinanceDocument.source_payload.rentRollRows
+      : [];
 
     const normalized = message.toLowerCase();
     const rows = tenantProfiles.length > 0
@@ -173,6 +186,64 @@ export default async function handler(req, res) {
         reply: `Across the currently tracked tenant records, the total mapped rent base is ${currency(total)}.`,
         action: { page: "Revenue" },
       });
+    }
+
+    if (financeSummaryRows.length > 0) {
+      const findSummary = (label) =>
+        financeSummaryRows.find((row) => String(row.label || "").toLowerCase() === label);
+
+      if (normalized.includes("mg rent") || normalized.includes("minimum guarantee")) {
+        const mgRow = findSummary("mg rent");
+        if (mgRow) {
+          return sendJson(res, 200, {
+            reply: `The approved finance workbook shows MG Rent total at ${mgRow.total} with an average of ${mgRow.average}.`,
+            action: { page: "Revenue" },
+          });
+        }
+      }
+
+      if (normalized.includes("cam")) {
+        const camRow = findSummary("cam");
+        if (camRow) {
+          return sendJson(res, 200, {
+            reply: `The approved finance workbook shows CAM total at ${camRow.total} with an average of ${camRow.average}.`,
+            action: { page: "Revenue" },
+          });
+        }
+      }
+
+      if (normalized.includes("gto") || normalized.includes("sales")) {
+        const salesRow = findSummary("gto sales");
+        if (salesRow) {
+          return sendJson(res, 200, {
+            reply: `The approved finance workbook shows GTO Sales total at ${salesRow.total} with an average of ${salesRow.average}.`,
+            action: { page: "Revenue" },
+          });
+        }
+      }
+    }
+
+    if ((normalized.includes("brand") || normalized.includes("tenant")) && rentRollRows.length > 0) {
+      const matchingFinanceBrand = findBrandMatches(
+        rentRollRows.map((row) => ({
+          brandName: row["Brand Name"] || row["Customer Name"] || "",
+        })),
+        normalized,
+      );
+
+      if (matchingFinanceBrand.length > 0) {
+        const matchedName = matchingFinanceBrand[0].brandName;
+        const matchedRow = rentRollRows.find(
+          (row) => String(row["Brand Name"] || row["Customer Name"] || "").toLowerCase() === matchedName.toLowerCase(),
+        );
+
+        if (matchedRow) {
+          return sendJson(res, 200, {
+            reply: `${matchedName} is in the approved rent roll for unit ${matchedRow["Unit No"] || "N/A"} with current MG ${matchedRow["Current MG (Per Month)"] || matchedRow["Current Rent"] || "N/A"}, category ${matchedRow["Sales Category"] || matchedRow["Category"] || "N/A"}, and lease expiry ${matchedRow["Ultimate Lease Expiry date"] || matchedRow["Original Lease End Date"] || "N/A"}.`,
+            action: { page: "Tenants" },
+          });
+        }
+      }
     }
 
     try {

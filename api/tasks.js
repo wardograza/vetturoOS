@@ -8,7 +8,7 @@ export default async function handler(req, res) {
   try {
     const user = await getUserFromBearerToken(req);
     const body = await readJsonBody(req);
-    const payload = {
+    const basePayload = {
       title: body.title,
       description: body.description,
       department: body.department,
@@ -19,18 +19,41 @@ export default async function handler(req, res) {
       sla_due_at: body.slaDueAt || null,
     };
 
-    if (user?.id || body.createdBy) {
-      payload.created_by = user?.id || body.createdBy;
+    const payloadVariants = [
+      {
+        ...basePayload,
+        ...(user?.id || body.createdBy ? { created_by: user?.id || body.createdBy } : {}),
+      },
+      basePayload,
+      {
+        title: body.title,
+        description: body.description || null,
+        department: body.department || null,
+        priority: body.priority || "P2",
+        status: "open",
+      },
+      {
+        title: body.title,
+        status: "open",
+      },
+    ];
+
+    let data = null;
+    let lastError = null;
+
+    for (const payload of payloadVariants) {
+      const result = await admin.from("tasks").insert(payload).select("id").single();
+      if (!result.error) {
+        data = result.data;
+        lastError = null;
+        break;
+      }
+
+      lastError = result.error;
     }
 
-    const { data, error } = await admin
-      .from("tasks")
-      .insert(payload)
-      .select("id")
-      .single();
-
-    if (error) {
-      throw error;
+    if (lastError || !data) {
+      throw lastError ?? new Error("Task creation failed.");
     }
 
     return sendJson(res, 200, { ok: true, id: data.id });

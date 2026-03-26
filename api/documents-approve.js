@@ -21,6 +21,29 @@ function conflictEntries(existing, incoming) {
   });
 }
 
+function mapRentRollRowToTenantPayload(row) {
+  return {
+    Brand_Name: row["Brand Name"] || row["Customer Name"] || "",
+    Parent_Company: row["Group/Parent Name"] || row["Company Name"] || "",
+    Category_Primary: row["Sales Category"] || row["Category"] || "",
+    Category_Secondary: row["Sales Sub Category"] || "",
+    Unit_Code: row["Unit No"] || row.Unit || "",
+    Lease_Start_Date: row["Original Lease start date"] || row["Start Date"] || "",
+    Lease_Expiry_Date: row["Ultimate Lease Expiry date"] || row["Original Lease End Date"] || row["End Date"] || "",
+    MG_Rent_Monthly: row["Current MG (Per Month)"] || row["Escalated /New Rent"] || row["Current Rent"] || row["Rent"] || "",
+    GTO_Percent: row["%Rev share  - 1"] || row["New RS%"] || row["RS%"] || "",
+    Security_Deposit: row["Total Deposit Amount (Received till Asofdate)"] || "",
+    Unit_GLA_SBA: row.GLA || row.SBA || row["Chargable Area"] || "",
+    Power_Load_kVA: row["Power_Load_kVA"] || "",
+    Gas_Connection_YN: row["Gas_Connection_YN"] || "",
+    Water_Inlet_YN: row["Water_Inlet_YN"] || "",
+    Exhaust_Provision_YN: row["Exhaust_Provision_YN"] || "",
+    Insurance_Expiry: row["Insurance_Expiry"] || "",
+    Trade_License_Expiry: row["Trade_License_Expiry"] || "",
+    Last_Audit_Score: row["Health Ratio"] || "",
+  };
+}
+
 export default async function handler(req, res) {
   if (req.method !== "POST") {
     return sendJson(res, 405, { error: "Method not allowed." });
@@ -41,6 +64,8 @@ export default async function handler(req, res) {
     const payload = document.source_payload || {};
     const organizationPayload = payload.organizationPayload || null;
     const tenantPayloads = Array.isArray(payload.tenantPayloads) ? payload.tenantPayloads : null;
+    const rentRollRows = Array.isArray(payload.rentRollRows) ? payload.rentRollRows : null;
+    const financeSummaryRows = Array.isArray(payload.financeSummaryRows) ? payload.financeSummaryRows : null;
     let conflicts = [];
 
     if (organizationPayload || tenantPayloads) {
@@ -149,6 +174,74 @@ export default async function handler(req, res) {
           });
         }
       }
+    } else if (rentRollRows || financeSummaryRows) {
+      const structuredRows = (rentRollRows ?? []).map(mapRentRollRowToTenantPayload);
+
+      for (const tenantPayload of structuredRows) {
+        if (!tenantPayload.Brand_Name) {
+          continue;
+        }
+
+        const { data: existingTenant } = await admin
+          .from("tenant_profiles")
+          .select("brand_name, unit_code, source_payload")
+          .eq("brand_name", tenantPayload.Brand_Name)
+          .eq("unit_code", tenantPayload.Unit_Code || "Unassigned")
+          .maybeSingle();
+
+        conflicts = conflicts.concat(conflictEntries(existingTenant?.source_payload, tenantPayload));
+      }
+
+      if (conflicts.length > 0 && !body.allowOverwrite) {
+        return sendJson(res, 200, {
+          requiresConfirmation: true,
+          conflicts,
+        });
+      }
+
+      for (const tenantPayload of structuredRows) {
+        if (!tenantPayload.Brand_Name) {
+          continue;
+        }
+
+        await admin.from("tenant_profiles").upsert({
+          brand_name: tenantPayload.Brand_Name,
+          unit_code: tenantPayload.Unit_Code || "Unassigned",
+          rent_amount: numberOrNull(tenantPayload.MG_Rent_Monthly),
+          parent_company: tenantPayload.Parent_Company || null,
+          category_primary: tenantPayload.Category_Primary || null,
+          category_secondary: tenantPayload.Category_Secondary || null,
+          lease_start_date: tenantPayload.Lease_Start_Date || null,
+          lease_expiry_date: tenantPayload.Lease_Expiry_Date || null,
+          mg_rent_monthly: numberOrNull(tenantPayload.MG_Rent_Monthly),
+          gto_percent: numberOrNull(tenantPayload.GTO_Percent),
+          security_deposit: numberOrNull(tenantPayload.Security_Deposit),
+          unit_gla_sba: numberOrNull(tenantPayload.Unit_GLA_SBA),
+          power_load_kva: numberOrNull(tenantPayload.Power_Load_kVA),
+          gas_connection_yn: tenantPayload.Gas_Connection_YN || null,
+          water_inlet_yn: tenantPayload.Water_Inlet_YN || null,
+          exhaust_provision_yn: tenantPayload.Exhaust_Provision_YN || null,
+          insurance_expiry: tenantPayload.Insurance_Expiry || null,
+          trade_license_expiry: tenantPayload.Trade_License_Expiry || null,
+          last_audit_score: numberOrNull(tenantPayload.Last_Audit_Score),
+          source_payload: {
+            ...tenantPayload,
+            financeWorkbook: true,
+          },
+        });
+      }
+
+      await admin.from("document_memory_entries").insert({
+        document_id: document.id,
+        kind: "structured_fields",
+        title: document.file_name,
+        structured_payload: {
+          financeSummaryRows: financeSummaryRows ?? [],
+          rentRollRowsCount: rentRollRows?.length ?? 0,
+          brandStatsRowsCount: Array.isArray(payload.brandStatsRows) ? payload.brandStatsRows.length : 0,
+          sourcePayload: payload,
+        },
+      });
     } else if (document.domain_category === "leasing" && payload.Brand_Name) {
       const { data: existingTenant } = await admin
         .from("tenant_profiles")

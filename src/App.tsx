@@ -93,6 +93,21 @@ interface ProfileDraft {
   confirmPassword: string;
 }
 
+interface BotToast {
+  id: string;
+  text: string;
+}
+
+interface ManagedUserDraft {
+  userId: string;
+  email: string;
+  fullName: string;
+  username: string;
+  phoneNumber: string;
+  role: string;
+  permissions: string[];
+}
+
 const navItems: NavPage[] = [
   "Overview",
   "Profile",
@@ -178,6 +193,16 @@ const defaultProfileDraft: ProfileDraft = {
   confirmPassword: "",
 };
 
+const defaultManagedUserDraft: ManagedUserDraft = {
+  userId: "",
+  email: "",
+  fullName: "",
+  username: "",
+  phoneNumber: "",
+  role: "mall_manager",
+  permissions: [],
+};
+
 const pagePermissions: Partial<Record<NavPage, string[]>> = {
   Overview: ["view_dashboard"],
   Revenue: ["view_revenue"],
@@ -255,6 +280,22 @@ function canAccessPage(page: NavPage, profile: AuthProfile | null) {
   }
 
   return requiredPermissions.some((permission) => profile.permissions.includes(permission));
+}
+
+function getTenantFieldOptions(fieldKey: string) {
+  const options: Record<string, string[]> = {
+    Category_Primary: ["Fashion", "F&B", "Electronics", "Footwear", "Beauty", "Entertainment", "Others", "Vacant"],
+    Category_Secondary: ["Casual Dining", "Quick Service", "Ethnic Wear", "Eyewear", "Footwear & Fitness", "Luxury", "Kids", "Vacant"],
+    Brand_Grade: ["A", "B", "C"],
+    Store_Format: ["Flagship", "Boutique", "Kiosk", "SIS", "Inline"],
+    Target_Audience: ["Family", "Gen Z", "Mass Premium", "Luxury", "Kids"],
+    Gas_Connection_YN: ["Yes", "No"],
+    Water_Inlet_YN: ["Yes", "No"],
+    Exhaust_Provision_YN: ["Yes", "No"],
+    Signage_Type: ["Facade", "Digital", "Glow-sign", "Pillar"],
+  };
+
+  return options[fieldKey] ?? [];
 }
 
 function getCommunicationBadge(status: string) {
@@ -368,9 +409,101 @@ async function parseOnboardingWorkbook(file: File) {
     )
     .filter((row) => String(row.Brand_Name || "").trim() !== "");
 
+  if (organizationSheet || tenantSheet) {
+    return {
+      workbookType: "onboarding",
+      organizationPayload,
+      tenantPayloads,
+      sheetNames: workbook.SheetNames,
+    };
+  }
+
+  const summarySheet = workbook.Sheets["Summary"];
+  const rentRollSheet = workbook.Sheets["Rent Roll"];
+  const brandStatsSheet = workbook.Sheets["Sheet3"];
+
+  const summaryRows = summarySheet
+    ? (XLSX.utils.sheet_to_json(summarySheet, {
+        header: 1,
+        raw: false,
+        defval: "",
+      }) as string[][])
+    : [];
+
+  const financeSummaryRows = summaryRows
+    .slice(1)
+    .filter((row) => String(row[0] || "").trim())
+    .map((row) => ({
+      label: String(row[0] || "").trim(),
+      apr: String(row[1] || "").trim(),
+      may: String(row[2] || "").trim(),
+      jun: String(row[3] || "").trim(),
+      jul: String(row[4] || "").trim(),
+      aug: String(row[5] || "").trim(),
+      sep: String(row[6] || "").trim(),
+      oct: String(row[7] || "").trim(),
+      nov: String(row[8] || "").trim(),
+      dec: String(row[9] || "").trim(),
+      jan: String(row[10] || "").trim(),
+      feb: String(row[11] || "").trim(),
+      mar: String(row[12] || "").trim(),
+      total: String(row[13] || "").trim(),
+      average: String(row[14] || "").trim(),
+      note: String(row[15] || "").trim(),
+    }));
+
+  const rentRollRows = rentRollSheet
+    ? (() => {
+        const rows = XLSX.utils.sheet_to_json(rentRollSheet, { header: 1, raw: false, defval: "" }) as string[][];
+        const headerIndex = rows.findIndex((row) => row.includes("Brand Name") && row.includes("Unit No"));
+        if (headerIndex === -1) {
+          return [];
+        }
+
+        const headers = rows[headerIndex];
+        return rows
+          .slice(headerIndex + 1)
+          .map((row) =>
+            Object.fromEntries(
+              headers
+                .map((header, index) => [String(header || "").trim(), row[index] ?? ""])
+                .filter(([header]) => Boolean(header)),
+            ),
+          )
+          .filter((row) => String(row["Brand Name"] || "").trim() !== "");
+      })()
+    : [];
+
+  const brandStatsRows = brandStatsSheet
+    ? (() => {
+        const rows = XLSX.utils.sheet_to_json(brandStatsSheet, { header: 1, raw: false, defval: "" }) as string[][];
+        const headerIndex = rows.findIndex((row) => row.includes("Brand Name") && row.includes("Health Ratio"));
+        if (headerIndex === -1) {
+          return [];
+        }
+
+        const headers = rows[headerIndex];
+        return rows
+          .slice(headerIndex + 1)
+          .map((row) =>
+            Object.fromEntries(
+              headers
+                .map((header, index) => [String(header || "").trim(), row[index] ?? ""])
+                .filter(([header]) => Boolean(header)),
+            ),
+          )
+          .filter((row) => String(row["Brand Name"] || "").trim() !== "");
+      })()
+    : [];
+
   return {
-    organizationPayload,
-    tenantPayloads,
+    workbookType: "finance",
+    organizationPayload: {},
+    tenantPayloads: [],
+    financeSummaryRows,
+    rentRollRows,
+    brandStatsRows,
+    sheetNames: workbook.SheetNames,
   };
 }
 
@@ -385,6 +518,9 @@ function App() {
   const [isNavCollapsed, setIsNavCollapsed] = useState(false);
   const [botMessages, setBotMessages] = useState<BotMessage[]>(initialBotMessages);
   const [botInput, setBotInput] = useState("");
+  const [botAttachment, setBotAttachment] = useState<File | null>(null);
+  const [botToast, setBotToast] = useState<BotToast | null>(null);
+  const [hasUnreadBot, setHasUnreadBot] = useState(false);
   const [loginEmail, setLoginEmail] = useState("wardograza@gmail.com");
   const [loginPassword, setLoginPassword] = useState("Akkeef.2000");
   const [showLoginPassword, setShowLoginPassword] = useState(false);
@@ -401,9 +537,18 @@ function App() {
   const [revenueSearch, setRevenueSearch] = useState("");
   const [showInvitePermissions, setShowInvitePermissions] = useState(false);
   const [mustResetPassword, setMustResetPassword] = useState(false);
+  const [showFirstResetPassword, setShowFirstResetPassword] = useState(false);
+  const [showFirstResetConfirm, setShowFirstResetConfirm] = useState(false);
   const [profileDraft, setProfileDraft] = useState<ProfileDraft>(defaultProfileDraft);
+  const [showProfilePassword, setShowProfilePassword] = useState(false);
+  const [showProfileConfirmPassword, setShowProfileConfirmPassword] = useState(false);
   const [pendingApproval, setPendingApproval] = useState<DocumentRecord | null>(null);
   const [pendingConflicts, setPendingConflicts] = useState<string[]>([]);
+  const [inviteBanner, setInviteBanner] = useState<string | null>(null);
+  const [tenantPageSize, setTenantPageSize] = useState(25);
+  const [tenantPage, setTenantPage] = useState(1);
+  const [selectedTenantId, setSelectedTenantId] = useState<string | null>(null);
+  const [managedUserDraft, setManagedUserDraft] = useState<ManagedUserDraft>(defaultManagedUserDraft);
 
   useEffect(() => {
     if (!supabase) {
@@ -479,6 +624,10 @@ function App() {
     return () => window.clearInterval(interval);
   }, [session, configDraft.dataRefreshMinutes]);
 
+  useEffect(() => {
+    document.documentElement.dataset.theme = profileDraft.theme === "dark" ? "dark" : "light";
+  }, [profileDraft.theme]);
+
   const currentProfile = useMemo<AuthProfile | null>(() => {
     if (!workspace || !session?.user?.email) {
       return null;
@@ -546,6 +695,31 @@ function App() {
     };
   }, [tenants]);
 
+  const paginatedTenantResults = useMemo(() => {
+    const start = (tenantPage - 1) * tenantPageSize;
+    return tenantResults.slice(start, start + tenantPageSize);
+  }, [tenantPage, tenantPageSize, tenantResults]);
+
+  const selectedTenant = useMemo(
+    () => tenantResults.find((tenant) => tenant.id === selectedTenantId) ?? tenantResults[0] ?? null,
+    [selectedTenantId, tenantResults],
+  );
+
+  useEffect(() => {
+    setTenantPage(1);
+  }, [tenantSearch, tenantPageSize]);
+
+  useEffect(() => {
+    if (!selectedTenantId && tenantResults[0]) {
+      setSelectedTenantId(tenantResults[0].id);
+      return;
+    }
+
+    if (selectedTenantId && !tenantResults.some((tenant) => tenant.id === selectedTenantId)) {
+      setSelectedTenantId(tenantResults[0]?.id ?? null);
+    }
+  }, [selectedTenantId, tenantResults]);
+
   async function callApi<T>(path: string, body: object) {
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
@@ -571,7 +745,19 @@ function App() {
   }
 
   function pushBot(role: BotRole, text: string) {
-    setBotMessages((messages) => [...messages, { id: `${role}-${Date.now()}-${Math.random()}`, role, text }]);
+    const id = `${role}-${Date.now()}-${Math.random()}`;
+    setBotMessages((messages) => [...messages, { id, role, text }]);
+
+    if (role === "assistant") {
+      setBotToast({ id, text });
+      window.setTimeout(() => {
+        setBotToast((current) => (current?.id === id ? null : current));
+      }, 5000);
+
+      if (!isBotOpen) {
+        setHasUnreadBot(true);
+      }
+    }
   }
 
   async function handleLogin(event: FormEvent<HTMLFormElement>) {
@@ -695,18 +881,53 @@ function App() {
     }
   }
 
-  async function handleBotSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  async function handleBotSubmit(event?: { preventDefault?: () => void }) {
+    event?.preventDefault?.();
 
     const message = botInput.trim();
-    if (!message) {
+    if (!message && !botAttachment) {
       return;
     }
 
-    pushBot("user", message);
+    pushBot("user", botAttachment ? `${message || "Uploaded a file"} (${botAttachment.name})` : message);
     setBotInput("");
 
     try {
+      if (botAttachment) {
+        const result = await callApi<{
+          domain: string;
+          subCategory: string;
+          purposeSummary: string;
+          followUpQuestion: string;
+        }>("/api/copilot", {
+          mode: "classify_document",
+          fileName: botAttachment.name,
+          notes: message,
+          existingSelection: null,
+        });
+
+        const storagePath = await uploadToVault(botAttachment);
+        await callApi("/api/document-register", {
+          fileName: botAttachment.name,
+          storagePath,
+          documentType: /\.xlsx$/i.test(botAttachment.name) ? "onboarding" : "general",
+          domainCategory: result.domain,
+          subCategory: result.subCategory,
+          purposeSummary: result.purposeSummary,
+          parserSummary: message || `Uploaded via copilot chat.`,
+          sourcePayload: /\.xlsx$/i.test(botAttachment.name) ? await parseOnboardingWorkbook(botAttachment) : null,
+        });
+
+        setBotAttachment(null);
+        pushBot(
+          "assistant",
+          result.followUpQuestion ||
+            `I staged ${botAttachment.name} in the vault under ${result.domain}/${result.subCategory}. It now needs approval before entering core memory.`,
+        );
+        await loadWorkspace();
+        return;
+      }
+
       const result = await callApi<{ reply: string; action?: { page?: NavPage } }>("/api/copilot", {
         message,
       });
@@ -754,6 +975,9 @@ function App() {
           ? `User was created, but email delivery was blocked. Temporary password: ${result.tempPassword}. Reason: ${result.warning}`
           : "User invite submitted. The temp-password email has been sent.",
       );
+      if (result.tempPassword) {
+        setInviteBanner(`Temporary password for ${inviteDraft.email}: ${result.tempPassword}`);
+      }
       await loadWorkspace();
     } catch (error) {
       setWorkspaceError(error instanceof Error ? error.message : "Invite flow failed.");
@@ -906,6 +1130,42 @@ function App() {
     }
   }
 
+  async function handleUserAdmin(action: "reset_password" | "delete_user" | "update_user") {
+    if (!managedUserDraft.userId) {
+      setWorkspaceError("Select a user first.");
+      return;
+    }
+
+    setSavingState("user-admin");
+
+    try {
+      const result = await callApi<{ ok: boolean; tempPassword?: string }>("/api/user-admin", {
+        action,
+        ...managedUserDraft,
+      });
+
+      if (action === "reset_password" && result.tempPassword) {
+        setInviteBanner(`Temporary password for ${managedUserDraft.email}: ${result.tempPassword}`);
+        pushBot("assistant", `Password reset completed for ${managedUserDraft.fullName || managedUserDraft.email}.`);
+      }
+
+      if (action === "delete_user") {
+        pushBot("assistant", `${managedUserDraft.fullName || managedUserDraft.email} has been removed.`);
+        setManagedUserDraft(defaultManagedUserDraft);
+      }
+
+      if (action === "update_user") {
+        pushBot("assistant", `${managedUserDraft.fullName || managedUserDraft.email} has been updated.`);
+      }
+
+      await loadWorkspace();
+    } catch (error) {
+      setWorkspaceError(error instanceof Error ? error.message : "User admin action failed.");
+    } finally {
+      setSavingState(null);
+    }
+  }
+
   async function handleConfigSave(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setSavingState("config");
@@ -987,7 +1247,7 @@ function App() {
         </div>
 
         <nav className="sidebar-nav" aria-label="Primary navigation">
-          {visibleNavItems.map((item) => (
+          {visibleNavItems.filter((item) => item !== "Profile").map((item) => (
             <button
               className={`nav-button ${item === activePage ? "active" : ""}`}
               key={item}
@@ -998,6 +1258,16 @@ function App() {
             </button>
           ))}
         </nav>
+
+        {visibleNavItems.includes("Profile") ? (
+          <button
+            className={`nav-button ${activePage === "Profile" ? "active" : ""}`}
+            onClick={() => setActivePage("Profile")}
+            type="button"
+          >
+            {isNavCollapsed ? "P" : "Profile"}
+          </button>
+        ) : null}
 
         <button className="secondary-button full-width" onClick={handleLogout} type="button">
           {isNavCollapsed ? "Out" : "Logout"}
@@ -1015,6 +1285,17 @@ function App() {
 
         {workspaceLoading ? <section className="state-card">Loading workspace…</section> : null}
         {workspaceError ? <section className="state-card error">{workspaceError}</section> : null}
+        {inviteBanner ? (
+          <section className="state-card invite-banner">
+            <div>
+              <strong>Temporary password ready</strong>
+              <p>{inviteBanner}</p>
+            </div>
+            <button className="secondary-button" onClick={() => setInviteBanner(null)} type="button">
+              Acknowledge
+            </button>
+          </section>
+        ) : null}
 
         {!workspaceLoading && workspace ? (
           <PageRenderer
@@ -1026,12 +1307,14 @@ function App() {
             invites={invites}
             leasingDraft={leasingDraft}
             leasingIntel={leasingIntel}
+            managedUserDraft={managedUserDraft}
             onboardingGaps={onboardingGaps}
             pendingApproval={pendingApproval}
             pendingConflicts={pendingConflicts}
             pendingDocuments={pendingDocuments}
             profileDraft={profileDraft}
             profiles={workspace.profiles}
+            selectedTenant={selectedTenant}
             revenueResults={revenueResults}
             revenueSearch={revenueSearch}
             revenueSummary={revenueSummary}
@@ -1039,18 +1322,30 @@ function App() {
             setConfigDraft={setConfigDraft}
             setInviteDraft={setInviteDraft}
             setLeasingDraft={setLeasingDraft}
+            setManagedUserDraft={setManagedUserDraft}
             setProfileDraft={setProfileDraft}
             setRevenueSearch={setRevenueSearch}
             setShowInvitePermissions={setShowInvitePermissions}
+            setShowProfileConfirmPassword={setShowProfileConfirmPassword}
+            setShowProfilePassword={setShowProfilePassword}
             setTaskDraft={setTaskDraft}
             setTenantDraft={setTenantDraft}
+            setSelectedTenantId={setSelectedTenantId}
+            setTenantPage={setTenantPage}
+            setTenantPageSize={setTenantPageSize}
             setTenantSearch={setTenantSearch}
             setUploadDraft={setUploadDraft}
             showInvitePermissions={showInvitePermissions}
+            showProfileConfirmPassword={showProfileConfirmPassword}
+            showProfilePassword={showProfilePassword}
             taskDraft={taskDraft}
             tasks={tasks}
             tenantDraft={tenantDraft}
+            tenantPage={tenantPage}
+            tenantPageSize={tenantPageSize}
+            tenantPageCount={Math.max(1, Math.ceil(tenantResults.length / tenantPageSize))}
             tenantResults={tenantResults}
+            paginatedTenantResults={paginatedTenantResults}
             tenantSearch={tenantSearch}
             uploadDraft={uploadDraft}
             onApprove={handleApprove}
@@ -1061,6 +1356,7 @@ function App() {
             onProfileSave={handleProfileSave}
             onTaskCreate={handleTaskCreate}
             onTenantSubmit={handleTenantSubmit}
+            onUserAdmin={handleUserAdmin}
             onUploadSubmit={handleDocumentUpload}
           />
         ) : null}
@@ -1088,17 +1384,50 @@ function App() {
               className="bot-input"
               value={botInput}
               onChange={(event) => setBotInput(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" && !event.shiftKey) {
+                  event.preventDefault();
+                  void handleBotSubmit(event);
+                }
+              }}
               placeholder="Ask for revenue numbers, missing onboarding data, or operational help."
               rows={4}
             />
+            <label className="field">
+              <span>Attach file</span>
+              <input type="file" accept=".pdf,.xlsx,.xls" onChange={(event) => setBotAttachment(event.target.files?.[0] || null)} />
+              <small>{botAttachment ? `Attached: ${botAttachment.name}` : "Optional: upload through the copilot."}</small>
+            </label>
             <button className="primary-button full-width" type="submit">
-              Ask Vetturo
+              {botAttachment ? "Send with attachment" : "Ask Vetturo"}
             </button>
           </form>
         </aside>
       ) : null}
 
-      <button className="bot-launcher" onClick={() => setIsBotOpen((current) => !current)} type="button">
+      {botToast ? (
+        <button
+          className="bot-toast"
+          onClick={() => {
+            setIsBotOpen(true);
+            setHasUnreadBot(false);
+            setBotToast(null);
+          }}
+          type="button"
+        >
+          {botToast.text.slice(0, 140)}{botToast.text.length > 140 ? "…" : ""}
+        </button>
+      ) : null}
+
+      <button
+        className={`bot-launcher ${hasUnreadBot ? "unread" : ""}`}
+        onClick={() => {
+          setIsBotOpen((current) => !current);
+          setHasUnreadBot(false);
+          setBotToast(null);
+        }}
+        type="button"
+      >
         {isBotOpen ? "×" : "V"}
       </button>
 
@@ -1113,7 +1442,7 @@ function App() {
                 <span>New Password</span>
                 <input
                   placeholder="Enter new password"
-                  type="password"
+                  type={showFirstResetPassword ? "text" : "password"}
                   value={profileDraft.newPassword}
                   onChange={(event) => setProfileDraft((draft) => ({ ...draft, newPassword: event.target.value }))}
                 />
@@ -1122,11 +1451,26 @@ function App() {
                 <span>Confirm Password</span>
                 <input
                   placeholder="Confirm new password"
-                  type="password"
+                  type={showFirstResetConfirm ? "text" : "password"}
                   value={profileDraft.confirmPassword}
                   onChange={(event) => setProfileDraft((draft) => ({ ...draft, confirmPassword: event.target.value }))}
                 />
               </label>
+              <label className="checkbox-field compact-check">
+                <input checked={showFirstResetPassword} onChange={(event) => setShowFirstResetPassword(event.target.checked)} type="checkbox" />
+                <span>Show new password</span>
+              </label>
+              <label className="checkbox-field compact-check">
+                <input checked={showFirstResetConfirm} onChange={(event) => setShowFirstResetConfirm(event.target.checked)} type="checkbox" />
+                <span>Show confirmation</span>
+              </label>
+              <p className={`match-copy ${profileDraft.newPassword && profileDraft.confirmPassword && profileDraft.newPassword === profileDraft.confirmPassword ? "good" : "warn"}`}>
+                {profileDraft.newPassword || profileDraft.confirmPassword
+                  ? profileDraft.newPassword === profileDraft.confirmPassword
+                    ? "Passwords match."
+                    : "Passwords do not match yet."
+                  : "Enter and confirm the new password."}
+              </p>
               <button className="primary-button full-width" onClick={handlePasswordReset} type="button">
                 Save password
               </button>
@@ -1147,12 +1491,14 @@ interface PageRendererProps {
   invites: WorkspaceData["invites"];
   leasingDraft: LeasingDraft;
   leasingIntel: DecisionDnaRecord[];
+  managedUserDraft: ManagedUserDraft;
   onboardingGaps: OnboardingGap[];
   pendingApproval: DocumentRecord | null;
   pendingConflicts: string[];
   pendingDocuments: DocumentRecord[];
   profileDraft: ProfileDraft;
   profiles: AuthProfile[];
+  selectedTenant: TenantProfile | null;
   revenueResults: TenantProfile[];
   revenueSearch: string;
   revenueSummary: { total: number; average: number; topFiveShare: number; topFive: TenantProfile[] };
@@ -1160,18 +1506,30 @@ interface PageRendererProps {
   setConfigDraft: React.Dispatch<React.SetStateAction<ConfigDraft>>;
   setInviteDraft: React.Dispatch<React.SetStateAction<InviteDraft>>;
   setLeasingDraft: React.Dispatch<React.SetStateAction<LeasingDraft>>;
+  setManagedUserDraft: React.Dispatch<React.SetStateAction<ManagedUserDraft>>;
   setProfileDraft: React.Dispatch<React.SetStateAction<ProfileDraft>>;
   setRevenueSearch: React.Dispatch<React.SetStateAction<string>>;
   setShowInvitePermissions: React.Dispatch<React.SetStateAction<boolean>>;
+  setShowProfileConfirmPassword: React.Dispatch<React.SetStateAction<boolean>>;
+  setShowProfilePassword: React.Dispatch<React.SetStateAction<boolean>>;
+  setSelectedTenantId: React.Dispatch<React.SetStateAction<string | null>>;
   setTaskDraft: React.Dispatch<React.SetStateAction<TaskDraft>>;
+  setTenantPage: React.Dispatch<React.SetStateAction<number>>;
+  setTenantPageSize: React.Dispatch<React.SetStateAction<number>>;
   setTenantDraft: React.Dispatch<React.SetStateAction<TenantDraft>>;
   setTenantSearch: React.Dispatch<React.SetStateAction<string>>;
   setUploadDraft: React.Dispatch<React.SetStateAction<UploadDraft>>;
   showInvitePermissions: boolean;
+  showProfileConfirmPassword: boolean;
+  showProfilePassword: boolean;
   taskDraft: TaskDraft;
   tasks: TaskRecord[];
   tenantDraft: TenantDraft;
+  tenantPage: number;
+  tenantPageCount: number;
+  tenantPageSize: number;
   tenantResults: TenantProfile[];
+  paginatedTenantResults: TenantProfile[];
   tenantSearch: string;
   uploadDraft: UploadDraft;
   onApprove: (documentId: string, allowOverwrite?: boolean) => Promise<void>;
@@ -1182,6 +1540,7 @@ interface PageRendererProps {
   onProfileSave: (event: FormEvent<HTMLFormElement>) => Promise<void>;
   onTaskCreate: (event: FormEvent<HTMLFormElement>) => Promise<void>;
   onTenantSubmit: (event: FormEvent<HTMLFormElement>) => Promise<void>;
+  onUserAdmin: (action: "reset_password" | "delete_user" | "update_user") => Promise<void>;
   onUploadSubmit: (event: FormEvent<HTMLFormElement>) => Promise<void>;
 }
 
@@ -1195,12 +1554,14 @@ function PageRenderer(props: PageRendererProps) {
     invites,
     leasingDraft,
     leasingIntel,
+    managedUserDraft,
     onboardingGaps,
     pendingApproval,
     pendingConflicts,
     pendingDocuments,
     profileDraft,
     profiles,
+    selectedTenant,
     revenueResults,
     revenueSearch,
     revenueSummary,
@@ -1208,18 +1569,30 @@ function PageRenderer(props: PageRendererProps) {
     setConfigDraft,
     setInviteDraft,
     setLeasingDraft,
+    setManagedUserDraft,
     setProfileDraft,
     setRevenueSearch,
     setShowInvitePermissions,
+    setShowProfileConfirmPassword,
+    setShowProfilePassword,
+    setSelectedTenantId,
     setTaskDraft,
+    setTenantPage,
+    setTenantPageSize,
     setTenantDraft,
     setTenantSearch,
     setUploadDraft,
     showInvitePermissions,
+    showProfileConfirmPassword,
+    showProfilePassword,
     taskDraft,
     tasks,
     tenantDraft,
+    tenantPage,
+    tenantPageCount,
+    tenantPageSize,
     tenantResults,
+    paginatedTenantResults,
     tenantSearch,
     uploadDraft,
     onApprove,
@@ -1230,6 +1603,7 @@ function PageRenderer(props: PageRendererProps) {
     onProfileSave,
     onTaskCreate,
     onTenantSubmit,
+    onUserAdmin,
     onUploadSubmit,
   } = props;
 
@@ -1293,13 +1667,30 @@ function PageRenderer(props: PageRendererProps) {
             <div className="field-row">
               <label className="field">
                 <span>New Password</span>
-                <input type="password" value={profileDraft.newPassword} onChange={(event) => setProfileDraft((draft) => ({ ...draft, newPassword: event.target.value }))} />
+                <input type={showProfilePassword ? "text" : "password"} value={profileDraft.newPassword} onChange={(event) => setProfileDraft((draft) => ({ ...draft, newPassword: event.target.value }))} />
               </label>
               <label className="field">
                 <span>Confirm Password</span>
-                <input type="password" value={profileDraft.confirmPassword} onChange={(event) => setProfileDraft((draft) => ({ ...draft, confirmPassword: event.target.value }))} />
+                <input type={showProfileConfirmPassword ? "text" : "password"} value={profileDraft.confirmPassword} onChange={(event) => setProfileDraft((draft) => ({ ...draft, confirmPassword: event.target.value }))} />
               </label>
             </div>
+            <div className="field-row">
+              <label className="checkbox-field compact-check">
+                <input checked={showProfilePassword} onChange={(event) => setShowProfilePassword(event.target.checked)} type="checkbox" />
+                <span>Show new password</span>
+              </label>
+              <label className="checkbox-field compact-check">
+                <input checked={showProfileConfirmPassword} onChange={(event) => setShowProfileConfirmPassword(event.target.checked)} type="checkbox" />
+                <span>Show confirmation</span>
+              </label>
+            </div>
+            <p className={`match-copy ${profileDraft.newPassword && profileDraft.confirmPassword && profileDraft.newPassword === profileDraft.confirmPassword ? "good" : "warn"}`}>
+              {profileDraft.newPassword || profileDraft.confirmPassword
+                ? profileDraft.newPassword === profileDraft.confirmPassword
+                  ? "Passwords match."
+                  : "Passwords do not match yet."
+                : "Leave password blank if you are not changing it."}
+            </p>
             <button className="primary-button full-width" disabled={savingState === "profile"} type="submit">
               {savingState === "profile" ? "Saving…" : "Save profile"}
             </button>
@@ -1398,16 +1789,23 @@ function PageRenderer(props: PageRendererProps) {
               <p className="panel-kicker">Tenant Master</p>
               <h3>Existing and new tenants</h3>
             </div>
-            <input
-              className="search-input"
-              placeholder="Search brand, unit, company"
-              value={tenantSearch}
-              onChange={(event) => setTenantSearch(event.target.value)}
-            />
+            <div className="toolbar-row">
+              <input
+                className="search-input"
+                placeholder="Search brand, unit, company"
+                value={tenantSearch}
+                onChange={(event) => setTenantSearch(event.target.value)}
+              />
+              <select className="page-size-select" value={tenantPageSize} onChange={(event) => setTenantPageSize(Number(event.target.value))}>
+                {[10, 25, 50, 100].map((size) => (
+                  <option key={size} value={size}>{size} / page</option>
+                ))}
+              </select>
+            </div>
           </div>
           <div className="tenant-list">
-            {tenantResults.map((tenant) => (
-              <div className="tenant-row" key={tenant.id}>
+            {paginatedTenantResults.map((tenant) => (
+              <button className={`tenant-row interactive-row ${selectedTenant?.id === tenant.id ? "selected" : ""}`} key={tenant.id} onClick={() => setSelectedTenantId(tenant.id)} type="button">
                 <div>
                   <strong>{tenant.brandName}</strong>
                   <p>
@@ -1415,8 +1813,17 @@ function PageRenderer(props: PageRendererProps) {
                   </p>
                 </div>
                 <span>{formatCurrency(tenant.rent)}</span>
-              </div>
+              </button>
             ))}
+          </div>
+          <div className="tenant-pagination">
+            <button className="secondary-button" disabled={tenantPage <= 1} onClick={() => setTenantPage((page) => Math.max(1, page - 1))} type="button">
+              Previous
+            </button>
+            <span>Page {tenantPage} of {tenantPageCount}</span>
+            <button className="secondary-button" disabled={tenantPage >= tenantPageCount} onClick={() => setTenantPage((page) => Math.min(tenantPageCount, page + 1))} type="button">
+              Next
+            </button>
           </div>
         </article>
         <article className="panel form-panel">
@@ -1439,6 +1846,36 @@ function PageRenderer(props: PageRendererProps) {
               {savingState === "tenant" ? "Saving…" : "Add new tenant"}
             </button>
           </form>
+        </article>
+        <article className="panel wide-panel tenant-detail-panel">
+          <div className="panel-header">
+            <div>
+              <p className="panel-kicker">Brand Detail</p>
+              <h3>{selectedTenant?.brandName || "Select a tenant"}</h3>
+            </div>
+          </div>
+          {selectedTenant ? (
+            <div className="thread-list">
+              <div className="mini-stats three-up">
+                <MetricCard label="Rent" value={formatCompactCurrency(selectedTenant.rent)} note="Tracked base" />
+                <MetricCard label="SBA / GLA" value={selectedTenant.unitGlaSba ? String(selectedTenant.unitGlaSba) : "N/A"} note="Area" />
+                <MetricCard label="Audit / Health" value={selectedTenant.lastAuditScore ? `${selectedTenant.lastAuditScore}` : "N/A"} note="Latest score" />
+              </div>
+              <div className="thread-card">
+                <strong>Brand profile</strong>
+                <p>{selectedTenant.categoryPrimary || "No category"} • {selectedTenant.categorySecondary || "No sub-category"} • {selectedTenant.parentCompany || "No parent company"}</p>
+                <small>Lease expiry {formatDate(selectedTenant.leaseExpiryDate)} • Store manager {selectedTenant.storeManagerName || "Not provided"}</small>
+              </div>
+              <div className="graph-card">
+                <strong>Category comparison</strong>
+                <BarMetric label="Rent vs category average" value={selectedTenant.rent} max={Math.max(...tenantResults.filter((tenant) => tenant.categoryPrimary === selectedTenant.categoryPrimary).map((tenant) => tenant.rent), selectedTenant.rent, 1)} />
+                <BarMetric label="Area footprint" value={selectedTenant.unitGlaSba || 0} max={Math.max(...tenantResults.map((tenant) => tenant.unitGlaSba || 0), selectedTenant.unitGlaSba || 0, 1)} />
+                <BarMetric label="Audit / health ratio" value={selectedTenant.lastAuditScore || 0} max={100} />
+              </div>
+            </div>
+          ) : (
+            <div className="empty-row">Select a tenant to inspect its data and comparison stats.</div>
+          )}
         </article>
       </section>
     );
@@ -1901,8 +2338,8 @@ function PageRenderer(props: PageRendererProps) {
         <article className="panel">
           <div className="panel-header">
             <div>
-              <p className="panel-kicker">Existing Invites</p>
-              <h3>Status</h3>
+              <p className="panel-kicker">User Admin</p>
+              <h3>Invites and live users</h3>
             </div>
           </div>
           <div className="thread-list">
@@ -1921,6 +2358,91 @@ function PageRenderer(props: PageRendererProps) {
               <div className="empty-row">No invites issued yet.</div>
             )}
           </div>
+          <div className="thread-list top-gap">
+            {profiles.map((profile) => (
+              <button
+                className={`thread-card interactive-row ${managedUserDraft.userId === profile.id ? "selected" : ""}`}
+                key={profile.id}
+                onClick={() =>
+                  setManagedUserDraft({
+                    userId: profile.id,
+                    email: profile.email,
+                    fullName: profile.fullName,
+                    username: profile.username || "",
+                    phoneNumber: profile.phoneNumber || "",
+                    role: profile.role,
+                    permissions: profile.permissions,
+                  })
+                }
+                type="button"
+              >
+                <div className="thread-topline">
+                  <strong>{profile.fullName}</strong>
+                  <span className="badge neutral">{toTitle(profile.role)}</span>
+                </div>
+                <p>{profile.email}</p>
+                <small>{profile.permissions.join(", ") || "No explicit permissions"}</small>
+              </button>
+            ))}
+          </div>
+          {managedUserDraft.userId ? (
+            <form className="form-stack top-gap" onSubmit={(event) => { event.preventDefault(); void onUserAdmin("update_user"); }}>
+              <div className="field-row">
+                <label className="field">
+                  <span>Full Name</span>
+                  <input value={managedUserDraft.fullName} onChange={(event) => setManagedUserDraft((draft) => ({ ...draft, fullName: event.target.value }))} />
+                </label>
+                <label className="field">
+                  <span>Username</span>
+                  <input value={managedUserDraft.username} onChange={(event) => setManagedUserDraft((draft) => ({ ...draft, username: event.target.value }))} />
+                </label>
+              </div>
+              <div className="field-row">
+                <label className="field">
+                  <span>Phone</span>
+                  <input value={managedUserDraft.phoneNumber} onChange={(event) => setManagedUserDraft((draft) => ({ ...draft, phoneNumber: event.target.value }))} />
+                </label>
+                <label className="field">
+                  <span>Role</span>
+                  <select value={managedUserDraft.role} onChange={(event) => setManagedUserDraft((draft) => ({ ...draft, role: event.target.value }))}>
+                    {["super_admin", "mall_manager", "leasing_manager", "finance", "facilities"].map((option) => (
+                      <option key={option} value={option}>{toTitle(option)}</option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+              <div className="permission-grid">
+                {invitePermissionOptions.map((permission) => (
+                  <label className="checkbox-field" key={permission}>
+                    <input
+                      checked={managedUserDraft.permissions.includes(permission)}
+                      onChange={(event) =>
+                        setManagedUserDraft((draft) => ({
+                          ...draft,
+                          permissions: event.target.checked
+                            ? [...draft.permissions, permission]
+                            : draft.permissions.filter((item) => item !== permission),
+                        }))
+                      }
+                      type="checkbox"
+                    />
+                    <span>{toTitle(permission)}</span>
+                  </label>
+                ))}
+              </div>
+              <div className="button-row">
+                <button className="primary-button" disabled={savingState === "user-admin"} type="submit">
+                  Save user
+                </button>
+                <button className="secondary-button" disabled={savingState === "user-admin"} onClick={() => void onUserAdmin("reset_password")} type="button">
+                  Reset password
+                </button>
+              </div>
+              <button className="secondary-button full-width danger-button" disabled={savingState === "user-admin"} onClick={() => void onUserAdmin("delete_user")} type="button">
+                Delete user
+              </button>
+            </form>
+          ) : null}
         </article>
       </section>
     );
@@ -2027,6 +2549,22 @@ function MetricCard({ label, value, note }: { label: string; value: string; note
   );
 }
 
+function BarMetric({ label, value, max }: { label: string; value: number; max: number }) {
+  const width = max > 0 ? Math.min(100, Math.round((value / max) * 100)) : 0;
+
+  return (
+    <div className="bar-metric">
+      <div className="bar-metric-copy">
+        <span>{label}</span>
+        <strong>{Number.isFinite(value) ? value : 0}</strong>
+      </div>
+      <div className="bar-track">
+        <div className="bar-fill" style={{ width: `${width}%` }} />
+      </div>
+    </div>
+  );
+}
+
 function WorkbookSectionForm({
   section,
   values,
@@ -2042,8 +2580,17 @@ function WorkbookSectionForm({
       <div className="form-grid">
         {section.fields.map((field) => (
           <label className="field" key={field.key}>
-            <span>{field.label}{field.required ? " *" : ""}</span>
-            <input value={values[field.key] ?? ""} onChange={(event) => onChange(field.key, event.target.value)} />
+            <span>{field.label}</span>
+            {getTenantFieldOptions(field.key).length > 0 ? (
+              <select value={values[field.key] ?? ""} onChange={(event) => onChange(field.key, event.target.value)}>
+                <option value="">Select</option>
+                {getTenantFieldOptions(field.key).map((option) => (
+                  <option key={option} value={option}>{option}</option>
+                ))}
+              </select>
+            ) : (
+              <input value={values[field.key] ?? ""} onChange={(event) => onChange(field.key, event.target.value)} />
+            )}
             <small>{field.description}</small>
           </label>
         ))}
