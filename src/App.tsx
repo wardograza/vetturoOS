@@ -1,128 +1,94 @@
 import { useState } from "react";
 import {
-alerts,
-brandDecisions,
-metricCardsByPersona,
-personas,
-spilloverTasks,
+  alerts,
+  brandDecisions,
+  metricCardsByPersona,
+  personas,
 } from "./data";
 import type { PersonaId } from "./types";
-import { NavPage, resolveBotPrompt } from "./lib/botEngine";
-import { useWorkspaceController } from "./hooks/useWorkspaceController";
-import { backendMode } from "./lib/supabase";
 
 function App() {
-const navigationItems: NavPage[] = [
-"Dashboard",
-"Tasks",
-"Communications",
-"Revenue",
-"Leasing",
-"Document Vault",
-"Approvals",
-"Permissions",
-"Configs",
-];
+  const [activePersona, setActivePersona] = useState<PersonaId>("mall_manager");
 
-const [activePersona, setActivePersona] = useState<PersonaId>("mall_manager");
-const [activePage, setActivePage] = useState<NavPage>("Dashboard");
-const [copilotOpen, setCopilotOpen] = useState(true);
-const [botInput, setBotInput] = useState("");
+  const active = personas.find((p) => p.id === activePersona) || personas[0];
+  const metrics = metricCardsByPersona[activePersona] || [];
 
-const {
-communications: communicationState = [],
-vaultItems: vaultState = [],
-tasksToday: todayTaskState = [],
-chatMessages = [],
-userAccounts = [],
-inviteRecords = [],
-configItems = [],
-actions,
-} = useWorkspaceController();
+  // SAFE FALLBACK DATA (prevents crashes)
+  const safeCommunications = [
+    {
+      subject: "No communication available",
+      recipient: "—",
+      channel: "—",
+      status: "—",
+      events: [],
+    },
+  ];
 
-const active = personas.find((p) => p.id === activePersona) || personas[0];
-const metrics = metricCardsByPersona[activePersona] || [];
+  const communications = safeCommunications;
 
-const primaryCommunication = communicationState?.[0] || null;
-const primaryDecision = brandDecisions?.[0] || null;
+  const primaryCommunication = communications[0];
 
-const actionedCount = communicationState?.filter((i) => i?.status === "Actioned")?.length || 0;
-const openedCount =
-communicationState?.filter(
-(i) => i?.status === "Opened" || i?.status === "Read" || i?.status === "Clicked",
-)?.length || 0;
+  const primaryDecision =
+    brandDecisions?.[0] || {
+      brand: "No data",
+      recommendation: "No recommendation available",
+    };
 
-const activePageTitle = activePage === "Dashboard" ? "Good morning," : activePage;
+  return (
+    <div style={{ display: "flex", minHeight: "100vh", fontFamily: "sans-serif" }}>
+      
+      {/* Sidebar */}
+      <aside style={{ width: 200, background: "#111", color: "#fff", padding: 20 }}>
+        <h3>Vetturo</h3>
+        <p>{active?.label || "User"}</p>
+      </aside>
 
-const renderDashboard = () => (
-<> <section className="overview-grid">
-{metrics?.map((metric) => ( <article className="overview-card" key={metric.id}> <span>{metric.label}</span> <strong>{metric.value}</strong> </article>
-))} </section>
+      {/* Main */}
+      <main style={{ flex: 1, padding: 20 }}>
+        <h2>Dashboard</h2>
 
-```
-  <section className="dashboard-grid">
-    <article className="surface-card emphasis">
-      <h3>{primaryCommunication?.subject || "No subject"}</h3>
+        {/* Metrics */}
+        <div style={{ display: "flex", gap: 16, marginBottom: 20 }}>
+          {metrics.map((m) => (
+            <div
+              key={m.id}
+              style={{
+                padding: 12,
+                border: "1px solid #ddd",
+                borderRadius: 8,
+                minWidth: 120,
+              }}
+            >
+              <div>{m.label}</div>
+              <strong>{m.value}</strong>
+            </div>
+          ))}
+        </div>
 
-      <p>
-        {primaryCommunication?.recipient || "Unknown"} •{" "}
-        {primaryCommunication?.channel || "N/A"}
-      </p>
+        {/* Communication Card */}
+        <div style={{ border: "1px solid #ddd", padding: 16, borderRadius: 8 }}>
+          <h3>{primaryCommunication.subject}</h3>
+          <p>
+            {primaryCommunication.recipient} • {primaryCommunication.channel}
+          </p>
+          <strong>{primaryCommunication.status}</strong>
+        </div>
 
-      <div>
-        <strong>{primaryCommunication?.status || "N/A"}</strong>
-      </div>
-
-      <div>
-        {primaryCommunication?.events?.map((event) => (
-          <span key={event.label}>{event.label}</span>
-        )) || "No events"}
-      </div>
-    </article>
-
-    <article className="surface-card">
-      <h3>{primaryDecision?.brand || "No brand data"}</h3>
-      <p>{primaryDecision?.recommendation || "No recommendation"}</p>
-    </article>
-  </section>
-</>
-```
-
-);
-
-return ( <div className="app-shell"> <aside className="sidebar">
-{navigationItems.map((item) => (
-<button key={item} onClick={() => setActivePage(item)}>
-{item} </button>
-))} </aside>
-
-```
-  <main>
-    <h2>{activePageTitle}</h2>
-    {renderDashboard()}
-  </main>
-
-  {copilotOpen && (
-    <section>
-      {chatMessages?.map((msg, i) => (
-        <p key={i}>{msg.content}</p>
-      ))}
-
-      <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          setBotInput("");
-        }}
-      >
-        <input value={botInput} onChange={(e) => setBotInput(e.target.value)} />
-        <button type="submit">Send</button>
-      </form>
-    </section>
-  )}
-</div>
-```
-
-);
+        {/* Decision Card */}
+        <div
+          style={{
+            border: "1px solid #ddd",
+            padding: 16,
+            borderRadius: 8,
+            marginTop: 20,
+          }}
+        >
+          <h3>{primaryDecision.brand}</h3>
+          <p>{primaryDecision.recommendation}</p>
+        </div>
+      </main>
+    </div>
+  );
 }
 
 export default App;
