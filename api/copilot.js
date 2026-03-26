@@ -11,14 +11,36 @@ function currency(value) {
 }
 
 function findBrandMatches(rows, normalizedMessage) {
+  const ignoredTokens = new Set([
+    "what",
+    "how",
+    "much",
+    "many",
+    "rent",
+    "revenue",
+    "total",
+    "overall",
+    "base",
+    "made",
+    "show",
+    "tell",
+    "give",
+    "numbers",
+    "number",
+    "current",
+    "tracked",
+    "brand",
+    "tenant",
+  ]);
+
   const tokens = normalizedMessage
     .split(/[^a-z0-9]+/)
     .map((token) => token.trim())
-    .filter((token) => token.length >= 3);
+    .filter((token) => token.length >= 4 && !ignoredTokens.has(token));
 
   return rows.filter((row) => {
     const brand = String(row.brandName || "").toLowerCase();
-    return tokens.some((token) => brand.includes(token));
+    return tokens.some((token) => brand.includes(token) || brand.split(/\s+/).includes(token));
   });
 }
 
@@ -124,6 +146,19 @@ export default async function handler(req, res) {
 
     if (normalized.includes("revenue") || normalized.includes("made") || normalized.includes("rent")) {
       const total = rows.reduce((sum, row) => sum + Number(row.rent || 0), 0);
+      const genericRevenueQuery =
+        normalized.includes("total") ||
+        normalized.includes("overall") ||
+        normalized.includes("base") ||
+        normalized.includes("portfolio");
+
+      if (genericRevenueQuery) {
+        return sendJson(res, 200, {
+          reply: `Across the currently tracked tenant records, the total mapped rent base is ${currency(total)}.`,
+          action: { page: "Revenue" },
+        });
+      }
+
       const matching = findBrandMatches(rows, normalized);
 
       if (matching.length > 0) {
@@ -157,7 +192,7 @@ export default async function handler(req, res) {
     } catch (_error) {
       return sendJson(res, 200, {
         reply:
-          "I can still help using the structured data currently available in the workspace. For this question, I need either additional approved onboarding data or a live AI provider response path.",
+          "I can still help using the structured data currently available in the workspace. For this question, I either need more approved onboarding data or a configured AI provider with active credits.",
       });
     }
   } catch (error) {

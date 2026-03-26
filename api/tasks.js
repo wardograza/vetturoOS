@@ -8,20 +8,24 @@ export default async function handler(req, res) {
   try {
     const user = await getUserFromBearerToken(req);
     const body = await readJsonBody(req);
+    const payload = {
+      title: body.title,
+      description: body.description,
+      department: body.department,
+      priority: body.priority,
+      status: "open",
+      assigned_to: body.assignedToId || null,
+      proof_required: Boolean(body.proofRequired),
+      sla_due_at: body.slaDueAt || null,
+    };
+
+    if (user?.id || body.createdBy) {
+      payload.created_by = user?.id || body.createdBy;
+    }
 
     const { data, error } = await admin
       .from("tasks")
-      .insert({
-        title: body.title,
-        description: body.description,
-        department: body.department,
-        priority: body.priority,
-        status: "open",
-        assigned_to: body.assignedToId || null,
-        proof_required: Boolean(body.proofRequired),
-        sla_due_at: body.slaDueAt || null,
-        created_by: user?.id || body.createdBy || null,
-      })
+      .insert(payload)
       .select("id")
       .single();
 

@@ -81,8 +81,21 @@ interface UploadDraft {
   purposeSummary: string;
 }
 
+interface ProfileDraft {
+  fullName: string;
+  username: string;
+  phoneNumber: string;
+  email: string;
+  timezone: string;
+  status: string;
+  theme: string;
+  newPassword: string;
+  confirmPassword: string;
+}
+
 const navItems: NavPage[] = [
   "Overview",
+  "Profile",
   "Tenants",
   "Revenue",
   "Tasks",
@@ -96,6 +109,7 @@ const navItems: NavPage[] = [
 
 const pageDescriptions: Record<NavPage, string> = {
   Overview: "Copilot-first command center across revenue, tenant onboarding, documents, approvals, and escalations.",
+  Profile: "Your account settings, password controls, email change flow, and workspace preferences.",
   Tenants: "Tenant master and onboarding flow powered by the same structure as your mall-level workbook.",
   Revenue: "Portfolio revenue view with brand search, mall summaries, and rent visibility excluding invoice collection.",
   Tasks: "Create, assign, and track operational work with SLA dates and optional proof of completion.",
@@ -152,6 +166,30 @@ const defaultUploadDraft: UploadDraft = {
   purposeSummary: "",
 };
 
+const defaultProfileDraft: ProfileDraft = {
+  fullName: "",
+  username: "",
+  phoneNumber: "",
+  email: "",
+  timezone: "Asia/Kolkata",
+  status: "available",
+  theme: "dualtone",
+  newPassword: "",
+  confirmPassword: "",
+};
+
+const pagePermissions: Partial<Record<NavPage, string[]>> = {
+  Overview: ["view_dashboard"],
+  Revenue: ["view_revenue"],
+  Tasks: ["create_tasks", "assign_tasks"],
+  Communications: ["send_communications"],
+  "Document Vault": ["view_documents", "approve_documents"],
+  "Leasing Intel": ["view_leasing_intel"],
+  Approvals: ["approve_documents"],
+  "Invite User": ["invite_users"],
+  Configs: ["manage_configs"],
+};
+
 function formatCurrency(value: number | null) {
   return new Intl.NumberFormat("en-IN", {
     style: "currency",
@@ -192,6 +230,31 @@ function toTitle(value: string) {
     .filter(Boolean)
     .map((segment) => segment.charAt(0).toUpperCase() + segment.slice(1))
     .join(" ");
+}
+
+function canAccessPage(page: NavPage, profile: AuthProfile | null) {
+  if (page === "Profile") {
+    return true;
+  }
+
+  if (!profile) {
+    return false;
+  }
+
+  if (profile.role === "super_admin") {
+    return true;
+  }
+
+  if (page === "Tenants") {
+    return ["mall_manager", "leasing_manager"].includes(profile.role) || profile.permissions.includes("view_documents");
+  }
+
+  const requiredPermissions = pagePermissions[page];
+  if (!requiredPermissions || requiredPermissions.length === 0) {
+    return true;
+  }
+
+  return requiredPermissions.some((permission) => profile.permissions.includes(permission));
 }
 
 function getCommunicationBadge(status: string) {
@@ -324,6 +387,7 @@ function App() {
   const [botInput, setBotInput] = useState("");
   const [loginEmail, setLoginEmail] = useState("wardograza@gmail.com");
   const [loginPassword, setLoginPassword] = useState("Akkeef.2000");
+  const [showLoginPassword, setShowLoginPassword] = useState(false);
   const [loginError, setLoginError] = useState<string | null>(null);
   const [submittingLogin, setSubmittingLogin] = useState(false);
   const [taskDraft, setTaskDraft] = useState<TaskDraft>(defaultTaskDraft);
@@ -337,7 +401,7 @@ function App() {
   const [revenueSearch, setRevenueSearch] = useState("");
   const [showInvitePermissions, setShowInvitePermissions] = useState(false);
   const [mustResetPassword, setMustResetPassword] = useState(false);
-  const [newPassword, setNewPassword] = useState("");
+  const [profileDraft, setProfileDraft] = useState<ProfileDraft>(defaultProfileDraft);
   const [pendingApproval, setPendingApproval] = useState<DocumentRecord | null>(null);
   const [pendingConflicts, setPendingConflicts] = useState<string[]>([]);
 
@@ -375,6 +439,17 @@ function App() {
         ? data.profiles.find((profile) => profile.email === session.user.email) || null
         : null;
       setMustResetPassword(Boolean(signedInProfile?.mustResetPassword));
+
+      setProfileDraft((current) => ({
+        ...current,
+        fullName: signedInProfile?.fullName ?? "",
+        username: signedInProfile?.username ?? "",
+        phoneNumber: signedInProfile?.phoneNumber ?? "",
+        email: session?.user?.email ?? "",
+        timezone: typeof session?.user?.user_metadata?.timezone === "string" ? session.user.user_metadata.timezone : current.timezone,
+        status: typeof session?.user?.user_metadata?.status === "string" ? session.user.user_metadata.status : current.status,
+        theme: typeof session?.user?.user_metadata?.theme === "string" ? session.user.user_metadata.theme : current.theme,
+      }));
     } catch (error) {
       setWorkspaceError(error instanceof Error ? error.message : "Failed to load workspace.");
     } finally {
@@ -411,6 +486,17 @@ function App() {
 
     return workspace.profiles.find((profile) => profile.email === session.user?.email) || null;
   }, [workspace, session]);
+
+  const visibleNavItems = useMemo(
+    () => navItems.filter((item) => canAccessPage(item, currentProfile)),
+    [currentProfile],
+  );
+
+  useEffect(() => {
+    if (!visibleNavItems.includes(activePage)) {
+      setActivePage(visibleNavItems[0] ?? "Profile");
+    }
+  }, [activePage, visibleNavItems]);
 
   const tenants = workspace?.tenants ?? [];
   const tasks = workspace?.tasks ?? [];
@@ -522,20 +608,91 @@ function App() {
   }
 
   async function handlePasswordReset() {
-    if (!supabase || !newPassword.trim()) {
+    if (!supabase || !profileDraft.newPassword.trim()) {
+      setWorkspaceError("Enter a new password.");
       return;
     }
 
-    const { error } = await supabase.auth.updateUser({ password: newPassword.trim() });
+    if (profileDraft.newPassword !== profileDraft.confirmPassword) {
+      setWorkspaceError("Password confirmation does not match.");
+      return;
+    }
+
+    const { error } = await supabase.auth.updateUser({ password: profileDraft.newPassword.trim() });
 
     if (error) {
       setWorkspaceError(error.message);
       return;
     }
 
+    await callApi("/api/profile-update", { mustResetPassword: false });
     setMustResetPassword(false);
-    setNewPassword("");
+    setProfileDraft((draft) => ({ ...draft, newPassword: "", confirmPassword: "" }));
     pushBot("assistant", "Your permanent password has been set. You can continue using the workspace.");
+    await loadWorkspace();
+  }
+
+  async function handleProfileSave(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (!supabase) {
+      return;
+    }
+
+    setSavingState("profile");
+
+    try {
+      await callApi("/api/profile-update", {
+        fullName: profileDraft.fullName,
+        username: profileDraft.username,
+        phoneNumber: profileDraft.phoneNumber,
+      });
+
+      const metadataPayload = {
+        timezone: profileDraft.timezone,
+        status: profileDraft.status,
+        theme: profileDraft.theme,
+      };
+
+      const updates = [];
+      updates.push(supabase.auth.updateUser({ data: metadataPayload }));
+
+      if (profileDraft.email.trim() && profileDraft.email.trim() !== session?.user?.email) {
+        updates.push(supabase.auth.updateUser({ email: profileDraft.email.trim() }));
+      }
+
+      if (profileDraft.newPassword.trim()) {
+        if (profileDraft.newPassword !== profileDraft.confirmPassword) {
+          throw new Error("Password confirmation does not match.");
+        }
+
+        updates.push(supabase.auth.updateUser({ password: profileDraft.newPassword.trim() }));
+        updates.push(callApi("/api/profile-update", { mustResetPassword: false }));
+      }
+
+      const results = await Promise.all(updates);
+      const authError = results.find(
+        (result) => typeof result === "object" && result !== null && "error" in result && result.error,
+      );
+
+      if (authError && typeof authError === "object" && authError !== null && "error" in authError && authError.error) {
+        throw authError.error;
+      }
+
+      setMustResetPassword(false);
+      setProfileDraft((draft) => ({ ...draft, newPassword: "", confirmPassword: "" }));
+      pushBot(
+        "assistant",
+        profileDraft.email.trim() !== session?.user?.email
+          ? "Profile updated. Supabase will require email re-verification for the new address."
+          : "Profile and account settings updated.",
+      );
+      await loadWorkspace();
+    } catch (error) {
+      setWorkspaceError(error instanceof Error ? error.message : "Profile update failed.");
+    } finally {
+      setSavingState(null);
+    }
   }
 
   async function handleBotSubmit(event: FormEvent<HTMLFormElement>) {
@@ -786,8 +943,12 @@ function App() {
               <input
                 value={loginPassword}
                 onChange={(event) => setLoginPassword(event.target.value)}
-                type="password"
+                type={showLoginPassword ? "text" : "password"}
               />
+            </label>
+            <label className="checkbox-field compact-check">
+              <input checked={showLoginPassword} onChange={(event) => setShowLoginPassword(event.target.checked)} type="checkbox" />
+              <span>Show password</span>
             </label>
             {loginError ? <p className="error-copy">{loginError}</p> : null}
             <button className="primary-button full-width" disabled={submittingLogin} type="submit">
@@ -826,7 +987,7 @@ function App() {
         </div>
 
         <nav className="sidebar-nav" aria-label="Primary navigation">
-          {navItems.map((item) => (
+          {visibleNavItems.map((item) => (
             <button
               className={`nav-button ${item === activePage ? "active" : ""}`}
               key={item}
@@ -850,30 +1011,10 @@ function App() {
             <h2>{activePage}</h2>
             <p className="page-copy">{pageDescriptions[activePage]}</p>
           </div>
-          <button className="icon-button" onClick={() => setIsBotOpen((current) => !current)} type="button">
-            {isBotOpen ? "Hide Bot" : "Open Bot"}
-          </button>
         </header>
 
         {workspaceLoading ? <section className="state-card">Loading workspace…</section> : null}
         {workspaceError ? <section className="state-card error">{workspaceError}</section> : null}
-
-        {mustResetPassword ? (
-          <section className="state-card warn-card">
-            <h3>Create your permanent password</h3>
-            <div className="inline-form">
-              <input
-                placeholder="New permanent password"
-                type="password"
-                value={newPassword}
-                onChange={(event) => setNewPassword(event.target.value)}
-              />
-              <button className="primary-button" onClick={handlePasswordReset} type="button">
-                Save password
-              </button>
-            </div>
-          </section>
-        ) : null}
 
         {!workspaceLoading && workspace ? (
           <PageRenderer
@@ -889,6 +1030,7 @@ function App() {
             pendingApproval={pendingApproval}
             pendingConflicts={pendingConflicts}
             pendingDocuments={pendingDocuments}
+            profileDraft={profileDraft}
             profiles={workspace.profiles}
             revenueResults={revenueResults}
             revenueSearch={revenueSearch}
@@ -897,6 +1039,7 @@ function App() {
             setConfigDraft={setConfigDraft}
             setInviteDraft={setInviteDraft}
             setLeasingDraft={setLeasingDraft}
+            setProfileDraft={setProfileDraft}
             setRevenueSearch={setRevenueSearch}
             setShowInvitePermissions={setShowInvitePermissions}
             setTaskDraft={setTaskDraft}
@@ -915,6 +1058,7 @@ function App() {
             onConfigSave={handleConfigSave}
             onInviteSubmit={handleInviteSubmit}
             onLeasingSubmit={handleLeasingSubmit}
+            onProfileSave={handleProfileSave}
             onTaskCreate={handleTaskCreate}
             onTenantSubmit={handleTenantSubmit}
             onUploadSubmit={handleDocumentUpload}
@@ -923,7 +1067,7 @@ function App() {
       </main>
 
       {isBotOpen ? (
-        <aside className="bot-panel">
+        <aside className="bot-panel floating">
           <div className="bot-header">
             <div>
               <p className="panel-kicker">Vetturo</p>
@@ -952,11 +1096,44 @@ function App() {
             </button>
           </form>
         </aside>
-      ) : (
-        <button className="bot-launcher" onClick={() => setIsBotOpen(true)} type="button">
-          V
-        </button>
-      )}
+      ) : null}
+
+      <button className="bot-launcher" onClick={() => setIsBotOpen((current) => !current)} type="button">
+        {isBotOpen ? "×" : "V"}
+      </button>
+
+      {mustResetPassword ? (
+        <div className="modal-scrim">
+          <section className="modal-card">
+            <p className="section-kicker">First Login</p>
+            <h3>Create your permanent password</h3>
+            <p className="page-copy">You need to change the temporary password before entering the workspace.</p>
+            <div className="form-stack">
+              <label className="field">
+                <span>New Password</span>
+                <input
+                  placeholder="Enter new password"
+                  type="password"
+                  value={profileDraft.newPassword}
+                  onChange={(event) => setProfileDraft((draft) => ({ ...draft, newPassword: event.target.value }))}
+                />
+              </label>
+              <label className="field">
+                <span>Confirm Password</span>
+                <input
+                  placeholder="Confirm new password"
+                  type="password"
+                  value={profileDraft.confirmPassword}
+                  onChange={(event) => setProfileDraft((draft) => ({ ...draft, confirmPassword: event.target.value }))}
+                />
+              </label>
+              <button className="primary-button full-width" onClick={handlePasswordReset} type="button">
+                Save password
+              </button>
+            </div>
+          </section>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -974,6 +1151,7 @@ interface PageRendererProps {
   pendingApproval: DocumentRecord | null;
   pendingConflicts: string[];
   pendingDocuments: DocumentRecord[];
+  profileDraft: ProfileDraft;
   profiles: AuthProfile[];
   revenueResults: TenantProfile[];
   revenueSearch: string;
@@ -982,6 +1160,7 @@ interface PageRendererProps {
   setConfigDraft: React.Dispatch<React.SetStateAction<ConfigDraft>>;
   setInviteDraft: React.Dispatch<React.SetStateAction<InviteDraft>>;
   setLeasingDraft: React.Dispatch<React.SetStateAction<LeasingDraft>>;
+  setProfileDraft: React.Dispatch<React.SetStateAction<ProfileDraft>>;
   setRevenueSearch: React.Dispatch<React.SetStateAction<string>>;
   setShowInvitePermissions: React.Dispatch<React.SetStateAction<boolean>>;
   setTaskDraft: React.Dispatch<React.SetStateAction<TaskDraft>>;
@@ -1000,6 +1179,7 @@ interface PageRendererProps {
   onConfigSave: (event: FormEvent<HTMLFormElement>) => Promise<void>;
   onInviteSubmit: (event: FormEvent<HTMLFormElement>) => Promise<void>;
   onLeasingSubmit: (event: FormEvent<HTMLFormElement>) => Promise<void>;
+  onProfileSave: (event: FormEvent<HTMLFormElement>) => Promise<void>;
   onTaskCreate: (event: FormEvent<HTMLFormElement>) => Promise<void>;
   onTenantSubmit: (event: FormEvent<HTMLFormElement>) => Promise<void>;
   onUploadSubmit: (event: FormEvent<HTMLFormElement>) => Promise<void>;
@@ -1019,6 +1199,7 @@ function PageRenderer(props: PageRendererProps) {
     pendingApproval,
     pendingConflicts,
     pendingDocuments,
+    profileDraft,
     profiles,
     revenueResults,
     revenueSearch,
@@ -1027,6 +1208,7 @@ function PageRenderer(props: PageRendererProps) {
     setConfigDraft,
     setInviteDraft,
     setLeasingDraft,
+    setProfileDraft,
     setRevenueSearch,
     setShowInvitePermissions,
     setTaskDraft,
@@ -1045,10 +1227,105 @@ function PageRenderer(props: PageRendererProps) {
     onConfigSave,
     onInviteSubmit,
     onLeasingSubmit,
+    onProfileSave,
     onTaskCreate,
     onTenantSubmit,
     onUploadSubmit,
   } = props;
+
+  if (activePage === "Profile") {
+    return (
+      <section className="content-grid balanced">
+        <article className="panel form-panel">
+          <div className="panel-header">
+            <div>
+              <p className="panel-kicker">Profile</p>
+              <h3>Account and workspace preferences</h3>
+            </div>
+          </div>
+          <form className="form-stack" onSubmit={onProfileSave}>
+            <div className="field-row">
+              <label className="field">
+                <span>Full Name</span>
+                <input value={profileDraft.fullName} onChange={(event) => setProfileDraft((draft) => ({ ...draft, fullName: event.target.value }))} />
+              </label>
+              <label className="field">
+                <span>Username</span>
+                <input value={profileDraft.username} onChange={(event) => setProfileDraft((draft) => ({ ...draft, username: event.target.value }))} />
+              </label>
+            </div>
+            <div className="field-row">
+              <label className="field">
+                <span>Email</span>
+                <input type="email" value={profileDraft.email} onChange={(event) => setProfileDraft((draft) => ({ ...draft, email: event.target.value }))} />
+                <small>Changing this will require re-verification once email delivery is fully configured.</small>
+              </label>
+              <label className="field">
+                <span>Phone Number</span>
+                <input value={profileDraft.phoneNumber} onChange={(event) => setProfileDraft((draft) => ({ ...draft, phoneNumber: event.target.value }))} />
+              </label>
+            </div>
+            <div className="field-row">
+              <label className="field">
+                <span>Timezone</span>
+                <select value={profileDraft.timezone} onChange={(event) => setProfileDraft((draft) => ({ ...draft, timezone: event.target.value }))}>
+                  {["Asia/Kolkata", "UTC", "Asia/Dubai", "Europe/London", "America/New_York"].map((option) => (
+                    <option key={option} value={option}>{option}</option>
+                  ))}
+                </select>
+              </label>
+              <label className="field">
+                <span>Status</span>
+                <select value={profileDraft.status} onChange={(event) => setProfileDraft((draft) => ({ ...draft, status: event.target.value }))}>
+                  {["available", "away", "PTO"].map((option) => (
+                    <option key={option} value={option}>{option}</option>
+                  ))}
+                </select>
+              </label>
+            </div>
+            <label className="field">
+              <span>Theme</span>
+              <select value={profileDraft.theme} onChange={(event) => setProfileDraft((draft) => ({ ...draft, theme: event.target.value }))}>
+                <option value="dualtone">Dualtone Light</option>
+                <option value="dark">Dark</option>
+              </select>
+            </label>
+            <div className="field-row">
+              <label className="field">
+                <span>New Password</span>
+                <input type="password" value={profileDraft.newPassword} onChange={(event) => setProfileDraft((draft) => ({ ...draft, newPassword: event.target.value }))} />
+              </label>
+              <label className="field">
+                <span>Confirm Password</span>
+                <input type="password" value={profileDraft.confirmPassword} onChange={(event) => setProfileDraft((draft) => ({ ...draft, confirmPassword: event.target.value }))} />
+              </label>
+            </div>
+            <button className="primary-button full-width" disabled={savingState === "profile"} type="submit">
+              {savingState === "profile" ? "Saving…" : "Save profile"}
+            </button>
+          </form>
+        </article>
+        <article className="panel">
+          <div className="panel-header">
+            <div>
+              <p className="panel-kicker">Account Notes</p>
+              <h3>Invite-only access</h3>
+            </div>
+          </div>
+          <div className="thread-list">
+            <div className="thread-card">
+              <strong>Password control</strong>
+              <p>First-login password reset is enforced before workspace access.</p>
+            </div>
+            <div className="thread-card">
+              <strong>Permission-scoped navigation</strong>
+              <p>The sidebar only shows modules your role or explicit permissions allow.</p>
+            </div>
+          </div>
+        </article>
+      </section>
+    );
+  }
 
   if (activePage === "Overview") {
     return (

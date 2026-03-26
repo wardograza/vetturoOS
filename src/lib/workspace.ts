@@ -386,18 +386,22 @@ export async function fetchWorkspaceData(): Promise<WorkspaceData> {
     acceptedAt: (row.accepted_at as string | null) ?? null,
   }));
 
-  const config: AppConfigRecord | null = configResult.data[0]
+  const singletonConfigRow =
+    configResult.data.find((row) => String(row.id) === "00000000-0000-0000-0000-000000000001") ??
+    configResult.data[0];
+
+  const config: AppConfigRecord | null = singletonConfigRow
     ? {
-        id: String(configResult.data[0].id),
-        alertThresholdP1Minutes: toNumber(configResult.data[0].alert_threshold_p1_minutes) ?? 30,
-        alertThresholdP2Minutes: toNumber(configResult.data[0].alert_threshold_p2_minutes) ?? 120,
-        alertThresholdP3Minutes: toNumber(configResult.data[0].alert_threshold_p3_minutes) ?? 480,
-        dataRefreshMinutes: toNumber(configResult.data[0].data_refresh_minutes) ?? 30,
-        autoEscalationEnabled: Boolean(configResult.data[0].auto_escalation_enabled),
-        emailEnabled: Boolean(configResult.data[0].email_enabled),
-        whatsappEnabled: Boolean(configResult.data[0].whatsapp_enabled),
-        botApprovalProbeEnabled: Boolean(configResult.data[0].bot_approval_probe_enabled),
-        updatedAt: (configResult.data[0].updated_at as string | null) ?? null,
+        id: String(singletonConfigRow.id),
+        alertThresholdP1Minutes: toNumber(singletonConfigRow.alert_threshold_p1_minutes) ?? 30,
+        alertThresholdP2Minutes: toNumber(singletonConfigRow.alert_threshold_p2_minutes) ?? 120,
+        alertThresholdP3Minutes: toNumber(singletonConfigRow.alert_threshold_p3_minutes) ?? 480,
+        dataRefreshMinutes: toNumber(singletonConfigRow.data_refresh_minutes) ?? 30,
+        autoEscalationEnabled: Boolean(singletonConfigRow.auto_escalation_enabled),
+        emailEnabled: Boolean(singletonConfigRow.email_enabled),
+        whatsappEnabled: Boolean(singletonConfigRow.whatsapp_enabled),
+        botApprovalProbeEnabled: Boolean(singletonConfigRow.bot_approval_probe_enabled),
+        updatedAt: (singletonConfigRow.updated_at as string | null) ?? null,
       }
     : null;
 

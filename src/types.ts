@@ -1,5 +1,6 @@
 export type NavPage =
   | "Overview"
+  | "Profile"
   | "Tenants"
   | "Revenue"
   | "Tasks"
