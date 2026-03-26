@@ -187,6 +187,22 @@ async function fetchTenantProfiles(): Promise<{ data: TenantProfile[]; warning?:
   };
 }
 
+async function fetchTasks(): Promise<{ data: Record<string, unknown>[]; warning?: string }> {
+  const enriched = await safeSelect<Record<string, unknown>>(
+    "tasks",
+    "id, title, description, department, priority, status, assigned_to, proof_required, sla_due_at, created_at, assigned_to_profile:profiles!tasks_assigned_to_fkey(full_name)",
+  );
+
+  if (enriched.data.length > 0 || !enriched.warning) {
+    return enriched;
+  }
+
+  return safeSelect<Record<string, unknown>>(
+    "tasks",
+    "id, title, description, department, priority, status, assigned_to, proof_required, sla_due_at, created_at",
+  );
+}
+
 function computeMissingFields(
   payload: Record<string, string | number | boolean | null>,
   requiredKeys: string[],
@@ -259,10 +275,7 @@ export async function fetchWorkspaceData(): Promise<WorkspaceData> {
       "id, organization_name, organization_code, org_website_url, primary_brand_color, secondary_brand_color, portfolio_size_count, standard_hours_open, standard_hours_close, onboarding_lead_name, onboarding_lead_email, source_payload",
     ),
     fetchTenantProfiles(),
-    safeSelect<Record<string, unknown>>(
-      "tasks",
-      "id, title, description, department, priority, status, assigned_to, proof_required, sla_due_at, created_at, assigned_to_profile:profiles!tasks_assigned_to_fkey(full_name)",
-    ),
+    fetchTasks(),
     safeSelect<Record<string, unknown>>(
       "communications",
       "id, recipient_name, recipient_email, recipient_phone, channel, purpose, subject, body_preview, current_status, escalation_level, requires_action, sla_due_at, created_at",

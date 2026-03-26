@@ -16,6 +16,8 @@
   --good: #1f7a5c;
   --warn: #b56f28;
   --bad: #a94d4d;
+  --input-bg: rgba(255, 255, 255, 0.95);
+  --input-text: #28161d;
 }
 
 :root[data-theme="dark"] {
@@ -33,6 +35,8 @@
   --good: #6fd1a9;
   --warn: #e0ba73;
   --bad: #ff9f9f;
+  --input-bg: #171c23;
+  --input-text: #edf1f5;
 }
 
 * {
@@ -72,8 +76,8 @@ select {
   padding: 10px 12px;
   border: 1px solid var(--line);
   border-radius: 14px;
-  background: rgba(255, 255, 255, 0.95);
-  color: var(--text);
+  background: var(--input-bg);
+  color: var(--input-text);
 }
 
 textarea {
@@ -121,8 +125,7 @@ textarea {
 }
 
 .sidebar {
-  position: sticky;
-  top: 0;
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: 18px;
@@ -261,6 +264,7 @@ small {
   min-height: 42px;
   padding: 0;
   border-radius: 14px;
+  font-size: 1.05rem;
 }
 
 .nav-button:hover,
@@ -560,17 +564,21 @@ small {
 }
 
 .bot-header h3 {
-  font-size: 1.2rem;
+  font-size: 1.05rem;
 }
 
 .bot-body {
   overflow: auto;
+  display: grid;
+  gap: 10px;
+  padding-right: 2px;
 }
 
 .bot-message {
   padding: 12px 13px;
-  border-radius: 16px;
+  border-radius: 18px;
   line-height: 1.55;
+  border: 1px solid var(--line);
 }
 
 .bot-message.assistant {
@@ -590,6 +598,12 @@ small {
 .bot-input {
   min-height: 82px;
   border-radius: 18px;
+}
+
+.tenant-modal {
+  width: min(860px, calc(100vw - 32px));
+  max-height: 85vh;
+  overflow: auto;
 }
 
 .bot-launcher {

@@ -15,7 +15,6 @@ import type {
   DecisionDnaRecord,
   DocumentRecord,
   NavPage,
-  OnboardingGap,
   TaskRecord,
   TenantProfile,
   WorkbookSection,
@@ -108,6 +107,11 @@ interface ManagedUserDraft {
   phoneNumber: string;
   role: string;
   permissions: string[];
+}
+
+interface TenantDetailState {
+  open: boolean;
+  tenantId: string | null;
 }
 
 const navItems: NavPage[] = [
@@ -549,7 +553,7 @@ function App() {
     const stored = window.localStorage.getItem("vetturo_active_page");
     return (stored as NavPage) || "Overview";
   });
-  const [isBotOpen, setIsBotOpen] = useState(true);
+  const [isBotOpen, setIsBotOpen] = useState(false);
   const [isNavCollapsed, setIsNavCollapsed] = useState(false);
   const [botMessages, setBotMessages] = useState<BotMessage[]>(initialBotMessages);
   const [botInput, setBotInput] = useState("");
@@ -583,6 +587,7 @@ function App() {
   const [tenantPageSize, setTenantPageSize] = useState(25);
   const [tenantPage, setTenantPage] = useState(1);
   const [selectedTenantId, setSelectedTenantId] = useState<string | null>(null);
+  const [tenantDetailState, setTenantDetailState] = useState<TenantDetailState>({ open: false, tenantId: null });
   const [managedUserDraft, setManagedUserDraft] = useState<ManagedUserDraft>(defaultManagedUserDraft);
 
   useEffect(() => {
@@ -679,10 +684,14 @@ function App() {
   );
 
   useEffect(() => {
-    if (!visibleNavItems.includes(activePage)) {
-      setActivePage(visibleNavItems[0] ?? "Profile");
+    if (workspaceLoading || !workspace) {
+      return;
     }
-  }, [activePage, visibleNavItems]);
+
+    if (!visibleNavItems.includes(activePage)) {
+      setActivePage(visibleNavItems[0] ?? "Overview");
+    }
+  }, [activePage, visibleNavItems, workspace, workspaceLoading]);
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -813,6 +822,11 @@ function App() {
     [selectedTenantId, tenantResults],
   );
 
+  const detailTenant = useMemo(
+    () => tenantResults.find((tenant) => tenant.id === tenantDetailState.tenantId) ?? null,
+    [tenantDetailState.tenantId, tenantResults],
+  );
+
   useEffect(() => {
     setTenantPage(1);
   }, [tenantSearch, tenantPageSize]);
@@ -877,8 +891,26 @@ function App() {
     setSubmittingLogin(true);
     setLoginError(null);
 
+    let loginEmailAddress = loginEmail.trim();
+
+    if (!loginEmailAddress.includes("@")) {
+      const { data: matchedProfiles, error: profileLookupError } = await supabase
+        .from("profiles")
+        .select("email")
+        .eq("username", loginEmailAddress)
+        .limit(1);
+
+      if (profileLookupError || !matchedProfiles?.[0]?.email) {
+        setLoginError("That username could not be found.");
+        setSubmittingLogin(false);
+        return;
+      }
+
+      loginEmailAddress = matchedProfiles[0].email;
+    }
+
     const { error } = await supabase.auth.signInWithPassword({
-      email: loginEmail,
+      email: loginEmailAddress,
       password: loginPassword,
     });
 
@@ -1062,7 +1094,9 @@ function App() {
       await loadWorkspace();
     } catch (error) {
       setWorkspaceError(
-        error instanceof Error ? humanizeErrorMessage(error.message) : "Task creation failed. Please check the entered details.",
+        error instanceof Error
+          ? `Task creation failed. ${humanizeErrorMessage(error.message)}`
+          : "Task creation failed. Please check the entered details.",
       );
     } finally {
       setSavingState(null);
@@ -1306,8 +1340,8 @@ function App() {
 
           <form className="form-stack" onSubmit={handleLogin}>
             <label className="field">
-              <span>Email</span>
-              <input value={loginEmail} onChange={(event) => setLoginEmail(event.target.value)} type="email" />
+              <span>Username</span>
+              <input value={loginEmail} onChange={(event) => setLoginEmail(event.target.value)} type="text" />
             </label>
             <label className="field">
               <span>Password</span>
@@ -1428,7 +1462,6 @@ function App() {
             leasingDraft={leasingDraft}
             leasingIntel={leasingIntel}
             managedUserDraft={managedUserDraft}
-            onboardingGaps={onboardingGaps}
             overviewMetrics={overviewMetrics}
             pendingApproval={pendingApproval}
             pendingConflicts={pendingConflicts}
@@ -1452,6 +1485,7 @@ function App() {
             setTaskDraft={setTaskDraft}
             setTenantDraft={setTenantDraft}
             setSelectedTenantId={setSelectedTenantId}
+            setTenantDetailState={setTenantDetailState}
             setTenantPage={setTenantPage}
             setTenantPageSize={setTenantPageSize}
             setTenantSearch={setTenantSearch}
@@ -1465,7 +1499,6 @@ function App() {
             tenantPage={tenantPage}
             tenantPageSize={tenantPageSize}
             tenantPageCount={Math.max(1, Math.ceil(tenantResults.length / tenantPageSize))}
-            tenantResults={tenantResults}
             paginatedTenantResults={paginatedTenantResults}
             tenantSearch={tenantSearch}
             uploadDraft={uploadDraft}
@@ -1599,6 +1632,49 @@ function App() {
           </section>
         </div>
       ) : null}
+
+      {tenantDetailState.open && detailTenant ? (
+        <div className="modal-scrim" onClick={() => setTenantDetailState({ open: false, tenantId: null })}>
+          <section className="modal-card tenant-modal" onClick={(event) => event.stopPropagation()}>
+            <div className="panel-header">
+              <div>
+                <p className="panel-kicker">Brand Detail</p>
+                <h3>{detailTenant.brandName}</h3>
+              </div>
+              <button className="icon-button" onClick={() => setTenantDetailState({ open: false, tenantId: null })} type="button">
+                ×
+              </button>
+            </div>
+            <div className="thread-list">
+              <div className="mini-stats three-up">
+                <MetricCard label="Rent" value={formatCompactCurrency(detailTenant.rent)} note="Tracked base" />
+                <MetricCard label="SBA / GLA" value={detailTenant.unitGlaSba ? String(detailTenant.unitGlaSba) : "N/A"} note="Area" />
+                <MetricCard label="Audit / Health" value={detailTenant.lastAuditScore ? `${detailTenant.lastAuditScore}` : "N/A"} note="Latest score" />
+              </div>
+              <div className="thread-card">
+                <strong>Brand profile</strong>
+                <p>{detailTenant.categoryPrimary || "No category"} • {detailTenant.categorySecondary || "No sub-category"} • {detailTenant.parentCompany || "No parent company"}</p>
+                <small>Lease expiry {formatDate(detailTenant.leaseExpiryDate)} • Store manager {detailTenant.storeManagerName || "Not provided"}</small>
+              </div>
+              <div className="graph-card">
+                <strong>Category comparison</strong>
+                <BarMetric label="Rent vs category average" value={detailTenant.rent} max={Math.max(...tenantResults.filter((tenant) => tenant.categoryPrimary === detailTenant.categoryPrimary).map((tenant) => tenant.rent), detailTenant.rent, 1)} />
+                <BarMetric label="Area footprint" value={detailTenant.unitGlaSba || 0} max={Math.max(...tenantResults.map((tenant) => tenant.unitGlaSba || 0), detailTenant.unitGlaSba || 0, 1)} />
+                <BarMetric label="Audit / health ratio" value={detailTenant.lastAuditScore || 0} max={100} />
+              </div>
+              <div className="thread-card">
+                <strong>Onboarding gaps</strong>
+                <p>
+                  {onboardingGaps
+                    .filter((gap) => gap.recordLabel.toLowerCase() === detailTenant.brandName.toLowerCase())
+                    .flatMap((gap) => gap.missingFields)
+                    .join(", ") || "No required onboarding gaps detected for this brand."}
+                </p>
+              </div>
+            </div>
+          </section>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -1613,7 +1689,6 @@ interface PageRendererProps {
   leasingDraft: LeasingDraft;
   leasingIntel: DecisionDnaRecord[];
   managedUserDraft: ManagedUserDraft;
-  onboardingGaps: OnboardingGap[];
   overviewMetrics: { label: string; value: string; note: string }[];
   pendingApproval: DocumentRecord | null;
   pendingConflicts: string[];
@@ -1635,6 +1710,7 @@ interface PageRendererProps {
   setShowProfileConfirmPassword: React.Dispatch<React.SetStateAction<boolean>>;
   setShowProfilePassword: React.Dispatch<React.SetStateAction<boolean>>;
   setSelectedTenantId: React.Dispatch<React.SetStateAction<string | null>>;
+  setTenantDetailState: React.Dispatch<React.SetStateAction<TenantDetailState>>;
   setTaskDraft: React.Dispatch<React.SetStateAction<TaskDraft>>;
   setTenantPage: React.Dispatch<React.SetStateAction<number>>;
   setTenantPageSize: React.Dispatch<React.SetStateAction<number>>;
@@ -1650,7 +1726,6 @@ interface PageRendererProps {
   tenantPage: number;
   tenantPageCount: number;
   tenantPageSize: number;
-  tenantResults: TenantProfile[];
   paginatedTenantResults: TenantProfile[];
   tenantSearch: string;
   uploadDraft: UploadDraft;
@@ -1677,7 +1752,6 @@ function PageRenderer(props: PageRendererProps) {
     leasingDraft,
     leasingIntel,
     managedUserDraft,
-    onboardingGaps,
     overviewMetrics,
     pendingApproval,
     pendingConflicts,
@@ -1699,6 +1773,7 @@ function PageRenderer(props: PageRendererProps) {
     setShowProfileConfirmPassword,
     setShowProfilePassword,
     setSelectedTenantId,
+    setTenantDetailState,
     setTaskDraft,
     setTenantPage,
     setTenantPageSize,
@@ -1714,7 +1789,6 @@ function PageRenderer(props: PageRendererProps) {
     tenantPage,
     tenantPageCount,
     tenantPageSize,
-    tenantResults,
     paginatedTenantResults,
     tenantSearch,
     uploadDraft,
@@ -1939,7 +2013,15 @@ function PageRenderer(props: PageRendererProps) {
           </div>
           <div className="tenant-list">
             {paginatedTenantResults.map((tenant) => (
-              <button className={`tenant-row interactive-row ${selectedTenant?.id === tenant.id ? "selected" : ""}`} key={tenant.id} onClick={() => setSelectedTenantId(tenant.id)} type="button">
+              <button
+                className={`tenant-row interactive-row ${selectedTenant?.id === tenant.id ? "selected" : ""}`}
+                key={tenant.id}
+                onClick={() => {
+                  setSelectedTenantId(tenant.id);
+                  setTenantDetailState({ open: true, tenantId: tenant.id });
+                }}
+                type="button"
+              >
                 <div>
                   <strong>{tenant.brandName}</strong>
                   <p>
@@ -1980,45 +2062,6 @@ function PageRenderer(props: PageRendererProps) {
               {savingState === "tenant" ? "Saving…" : "Add new tenant"}
             </button>
           </form>
-        </article>
-        <article className="panel wide-panel tenant-detail-panel">
-          <div className="panel-header">
-            <div>
-              <p className="panel-kicker">Brand Detail</p>
-              <h3>{selectedTenant?.brandName || "Select a tenant"}</h3>
-            </div>
-          </div>
-          {selectedTenant ? (
-            <div className="thread-list">
-              <div className="mini-stats three-up">
-                <MetricCard label="Rent" value={formatCompactCurrency(selectedTenant.rent)} note="Tracked base" />
-                <MetricCard label="SBA / GLA" value={selectedTenant.unitGlaSba ? String(selectedTenant.unitGlaSba) : "N/A"} note="Area" />
-                <MetricCard label="Audit / Health" value={selectedTenant.lastAuditScore ? `${selectedTenant.lastAuditScore}` : "N/A"} note="Latest score" />
-              </div>
-              <div className="thread-card">
-                <strong>Brand profile</strong>
-                <p>{selectedTenant.categoryPrimary || "No category"} • {selectedTenant.categorySecondary || "No sub-category"} • {selectedTenant.parentCompany || "No parent company"}</p>
-                <small>Lease expiry {formatDate(selectedTenant.leaseExpiryDate)} • Store manager {selectedTenant.storeManagerName || "Not provided"}</small>
-              </div>
-              <div className="graph-card">
-                <strong>Category comparison</strong>
-                <BarMetric label="Rent vs category average" value={selectedTenant.rent} max={Math.max(...tenantResults.filter((tenant) => tenant.categoryPrimary === selectedTenant.categoryPrimary).map((tenant) => tenant.rent), selectedTenant.rent, 1)} />
-                <BarMetric label="Area footprint" value={selectedTenant.unitGlaSba || 0} max={Math.max(...tenantResults.map((tenant) => tenant.unitGlaSba || 0), selectedTenant.unitGlaSba || 0, 1)} />
-                <BarMetric label="Audit / health ratio" value={selectedTenant.lastAuditScore || 0} max={100} />
-              </div>
-              <div className="thread-card">
-                <strong>Onboarding gaps</strong>
-                <p>
-                  {onboardingGaps
-                    .filter((gap) => gap.recordLabel.toLowerCase() === selectedTenant.brandName.toLowerCase())
-                    .flatMap((gap) => gap.missingFields)
-                    .join(", ") || "No required onboarding gaps detected for this brand."}
-                </p>
-              </div>
-            </div>
-          ) : (
-            <div className="empty-row">Select a tenant to inspect its data and comparison stats.</div>
-          )}
         </article>
       </section>
     );
