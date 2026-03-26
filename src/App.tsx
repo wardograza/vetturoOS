@@ -585,10 +585,18 @@ function App() {
     setSavingState("invite");
 
     try {
-      await callApi("/api/invite-user", inviteDraft);
+      const result = await callApi<{ ok: boolean; warning?: string; tempPassword?: string }>(
+        "/api/invite-user",
+        inviteDraft,
+      );
       setInviteDraft(defaultInviteDraft);
       setShowInvitePermissions(false);
-      pushBot("assistant", "User invite submitted. The temp-password email has been sent.");
+      pushBot(
+        "assistant",
+        result.warning
+          ? `User was created, but email delivery was blocked. Temporary password: ${result.tempPassword}. Reason: ${result.warning}`
+          : "User invite submitted. The temp-password email has been sent.",
+      );
       await loadWorkspace();
     } catch (error) {
       setWorkspaceError(error instanceof Error ? error.message : "Invite flow failed.");

@@ -10,6 +10,18 @@ function currency(value) {
   }).format(value);
 }
 
+function findBrandMatches(rows, normalizedMessage) {
+  const tokens = normalizedMessage
+    .split(/[^a-z0-9]+/)
+    .map((token) => token.trim())
+    .filter((token) => token.length >= 3);
+
+  return rows.filter((row) => {
+    const brand = String(row.brandName || "").toLowerCase();
+    return tokens.some((token) => brand.includes(token));
+  });
+}
+
 export default async function handler(req, res) {
   if (req.method !== "POST") {
     return sendJson(res, 405, { error: "Method not allowed." });
@@ -112,7 +124,7 @@ export default async function handler(req, res) {
 
     if (normalized.includes("revenue") || normalized.includes("made") || normalized.includes("rent")) {
       const total = rows.reduce((sum, row) => sum + Number(row.rent || 0), 0);
-      const matching = rows.filter((row) => normalized.includes(String(row.brandName || "").toLowerCase()));
+      const matching = findBrandMatches(rows, normalized);
 
       if (matching.length > 0) {
         const totalMatching = matching.reduce((sum, row) => sum + Number(row.rent || 0), 0);

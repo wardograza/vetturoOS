@@ -1,45 +1,105 @@
-alter table if exists public.profiles
-  add column if not exists username text,
-  add column if not exists phone_number text,
-  add column if not exists permissions text[] not null default '{}';
+create extension if not exists "pgcrypto";
 
-alter table if exists public.profiles
-  alter column mall_id drop not null;
+do $$
+begin
+  if exists (select 1 from information_schema.tables where table_schema = 'public' and table_name = 'profiles') then
+    alter table public.profiles
+      add column if not exists username text,
+      add column if not exists phone_number text,
+      add column if not exists permissions text[] not null default '{}';
 
-alter table if exists public.user_invites
-  add column if not exists full_name text,
-  add column if not exists username text,
-  add column if not exists phone_number text,
-  add column if not exists permissions text[] not null default '{}';
+    if exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'profiles' and column_name = 'mall_id') then
+      alter table public.profiles alter column mall_id drop not null;
+    end if;
+  end if;
+end $$;
 
-alter table if exists public.user_invites
-  alter column mall_id drop not null,
-  alter column invited_by drop not null,
-  alter column temp_password_hash drop not null;
+do $$
+begin
+  if exists (select 1 from information_schema.tables where table_schema = 'public' and table_name = 'user_invites') then
+    alter table public.user_invites
+      add column if not exists full_name text,
+      add column if not exists username text,
+      add column if not exists phone_number text,
+      add column if not exists permissions text[] not null default '{}';
 
-alter table if exists public.tasks
-  alter column mall_id drop not null,
-  alter column created_by drop not null;
+    if exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'user_invites' and column_name = 'mall_id') then
+      alter table public.user_invites alter column mall_id drop not null;
+    end if;
+    if exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'user_invites' and column_name = 'invited_by') then
+      alter table public.user_invites alter column invited_by drop not null;
+    end if;
+    if exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'user_invites' and column_name = 'temp_password_hash') then
+      alter table public.user_invites alter column temp_password_hash drop not null;
+    end if;
+  end if;
+end $$;
 
-alter table if exists public.documents
-  add column if not exists domain_category text,
-  add column if not exists sub_category text,
-  add column if not exists purpose_summary text,
-  add column if not exists source_payload jsonb,
-  add column if not exists conflict_count integer not null default 0;
+do $$
+begin
+  if exists (select 1 from information_schema.tables where table_schema = 'public' and table_name = 'tasks') then
+    alter table public.tasks
+      add column if not exists description text,
+      add column if not exists department text,
+      add column if not exists priority text not null default 'P2',
+      add column if not exists assigned_to uuid references public.profiles(id) on delete set null,
+      add column if not exists proof_required boolean not null default false,
+      add column if not exists updated_at timestamptz not null default now();
 
-alter table if exists public.documents
-  alter column mall_id drop not null,
-  alter column uploaded_by drop not null;
+    if exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'tasks' and column_name = 'mall_id') then
+      alter table public.tasks alter column mall_id drop not null;
+    end if;
+    if exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'tasks' and column_name = 'created_by') then
+      alter table public.tasks alter column created_by drop not null;
+    end if;
+  end if;
+end $$;
 
-alter table if exists public.document_memory_entries
-  alter column mall_id drop not null;
+do $$
+begin
+  if exists (select 1 from information_schema.tables where table_schema = 'public' and table_name = 'documents') then
+    alter table public.documents
+      add column if not exists domain_category text,
+      add column if not exists sub_category text,
+      add column if not exists purpose_summary text,
+      add column if not exists source_payload jsonb,
+      add column if not exists conflict_count integer not null default 0;
 
-alter table if exists public.decision_dna_scores
-  alter column mall_id drop not null;
+    if exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'documents' and column_name = 'mall_id') then
+      alter table public.documents alter column mall_id drop not null;
+    end if;
+    if exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'documents' and column_name = 'uploaded_by') then
+      alter table public.documents alter column uploaded_by drop not null;
+    end if;
+  end if;
+end $$;
 
-alter table if exists public.communications
-  alter column mall_id drop not null;
+do $$
+begin
+  if exists (select 1 from information_schema.tables where table_schema = 'public' and table_name = 'document_memory_entries') then
+    if exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'document_memory_entries' and column_name = 'mall_id') then
+      alter table public.document_memory_entries alter column mall_id drop not null;
+    end if;
+  end if;
+end $$;
+
+do $$
+begin
+  if exists (select 1 from information_schema.tables where table_schema = 'public' and table_name = 'decision_dna_scores') then
+    if exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'decision_dna_scores' and column_name = 'mall_id') then
+      alter table public.decision_dna_scores alter column mall_id drop not null;
+    end if;
+  end if;
+end $$;
+
+do $$
+begin
+  if exists (select 1 from information_schema.tables where table_schema = 'public' and table_name = 'communications') then
+    if exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'communications' and column_name = 'mall_id') then
+      alter table public.communications alter column mall_id drop not null;
+    end if;
+  end if;
+end $$;
 
 create table if not exists public.organization_profiles (
   id uuid primary key default gen_random_uuid(),

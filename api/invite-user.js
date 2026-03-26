@@ -97,14 +97,25 @@ export default async function handler(req, res) {
       throw inviteError;
     }
 
-    await sendInviteEmail({
-      email: body.email,
-      fullName: body.fullName,
-      username: body.username,
-      tempPassword,
-    });
+    try {
+      await sendInviteEmail({
+        email: body.email,
+        fullName: body.fullName,
+        username: body.username,
+        tempPassword,
+      });
 
-    return sendJson(res, 200, { ok: true });
+      return sendJson(res, 200, { ok: true });
+    } catch (emailError) {
+      return sendJson(res, 200, {
+        ok: true,
+        warning:
+          emailError instanceof Error
+            ? emailError.message
+            : "Invite created, but the email could not be delivered.",
+        tempPassword,
+      });
+    }
   } catch (error) {
     return sendJson(res, 500, {
       error: error instanceof Error ? error.message : "Invite flow failed.",
