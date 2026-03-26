@@ -3,6 +3,7 @@ import { admin, buildTempPassword, readJsonBody, sendJson } from "./_lib/supabas
 async function sendInviteEmail({ email, fullName, username, tempPassword }) {
   const resendKey = process.env.RESEND_API_KEY;
   const appUrl = process.env.VITE_APP_URL || process.env.VERCEL_PROJECT_PRODUCTION_URL || "https://vetturo.ai";
+  const fromEmail = process.env.RESEND_FROM_EMAIL || "Vetturo <onboarding@resend.dev>";
 
   if (!resendKey) {
     throw new Error("RESEND_API_KEY is missing.");
@@ -15,7 +16,7 @@ async function sendInviteEmail({ email, fullName, username, tempPassword }) {
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      from: "Vetturo <onboarding@updates.vetturo.ai>",
+      from: fromEmail,
       to: [email],
       subject: "Your Vetturo access is ready",
       html: `

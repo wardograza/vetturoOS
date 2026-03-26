@@ -1,5 +1,5 @@
 import { admin, readJsonBody, sendJson } from "./_lib/supabase.js";
-import { callOpenAI } from "./_lib/openai.js";
+import { callOpenAI, classifyDocumentFallback } from "./_lib/openai.js";
 import { findMissingFields, organizationRequiredFields, tenantRequiredFields } from "./_lib/workbook.js";
 
 function currency(value) {
@@ -21,18 +21,22 @@ export default async function handler(req, res) {
     const message = String(body.message || "");
 
     if (mode === "classify_document") {
-      const reply = await callOpenAI({
-        system:
-          "You classify mall-management documents. Return strict JSON with keys domain, subCategory, purposeSummary, followUpQuestion. Domains: finance, leasing, legal, operations, marketing, sales.",
-        input: JSON.stringify({
-          fileName: body.fileName,
-          notes: body.notes,
-          existingSelection: body.existingSelection,
-        }),
-        responseFormat: "json",
-      });
+      try {
+        const reply = await callOpenAI({
+          system:
+            "You classify mall-management documents. Return strict JSON with keys domain, subCategory, purposeSummary, followUpQuestion. Domains: finance, leasing, legal, operations, marketing, sales.",
+          input: JSON.stringify({
+            fileName: body.fileName,
+            notes: body.notes,
+            existingSelection: body.existingSelection,
+          }),
+          responseFormat: "json",
+        });
 
-      return sendJson(res, 200, JSON.parse(reply));
+        return sendJson(res, 200, JSON.parse(reply));
+      } catch (_error) {
+        return sendJson(res, 200, classifyDocumentFallback(body));
+      }
     }
 
     const [tenantProfilesResult, legacyTenantsResult, organizationResult, taskResult, documentResult] =
@@ -124,19 +128,26 @@ export default async function handler(req, res) {
       });
     }
 
-    const aiReply = await callOpenAI({
-      system:
-        "You are Vetturo, a mall operations copilot. Answer using the provided JSON context only. If information is missing, explicitly say what onboarding data is missing and what the client must provide. Keep answers concise and operational.",
-      input: JSON.stringify({
-        userMessage: message,
-        organization,
-        tenants: rows.slice(0, 50),
-        tasks: tasks.slice(0, 20),
-        documents: documents.slice(0, 20),
-      }),
-    });
+    try {
+      const aiReply = await callOpenAI({
+        system:
+          "You are Vetturo, a mall operations copilot. Answer using the provided JSON context only. If information is missing, explicitly say what onboarding data is missing and what the client must provide. Keep answers concise and operational.",
+        input: JSON.stringify({
+          userMessage: message,
+          organization,
+          tenants: rows.slice(0, 50),
+          tasks: tasks.slice(0, 20),
+          documents: documents.slice(0, 20),
+        }),
+      });
 
-    return sendJson(res, 200, { reply: aiReply });
+      return sendJson(res, 200, { reply: aiReply });
+    } catch (_error) {
+      return sendJson(res, 200, {
+        reply:
+          "OpenAI credits are unavailable right now, so I’ve fallen back to deterministic workspace logic. I can still answer revenue totals, onboarding gaps, and other structured data questions from the current database.",
+      });
+    }
   } catch (error) {
     return sendJson(res, 500, {
       error: error instanceof Error ? error.message : "Copilot failed.",

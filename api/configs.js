@@ -15,7 +15,7 @@ export default async function handler(req, res) {
     if (req.method === "POST") {
       const body = await readJsonBody(req);
       const { error } = await admin.from("app_configs").upsert({
-        id: body.id || undefined,
+        id: body.id || "00000000-0000-0000-0000-000000000001",
         alert_threshold_p1_minutes: body.alertThresholdP1Minutes,
         alert_threshold_p2_minutes: body.alertThresholdP2Minutes,
         alert_threshold_p3_minutes: body.alertThresholdP3Minutes,
@@ -24,6 +24,8 @@ export default async function handler(req, res) {
         email_enabled: body.emailEnabled,
         whatsapp_enabled: body.whatsappEnabled,
         bot_approval_probe_enabled: body.botApprovalProbeEnabled,
+      }, {
+        onConflict: "id",
       });
 
       if (error) {
