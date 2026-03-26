@@ -89,6 +89,8 @@ interface ProfileDraft {
   timezone: string;
   status: string;
   theme: string;
+  ptoFrom: string;
+  ptoTo: string;
   newPassword: string;
   confirmPassword: string;
 }
@@ -112,7 +114,6 @@ const navItems: NavPage[] = [
   "Overview",
   "Profile",
   "Tenants",
-  "Revenue",
   "Tasks",
   "Communications",
   "Document Vault",
@@ -123,10 +124,10 @@ const navItems: NavPage[] = [
 ];
 
 const pageDescriptions: Record<NavPage, string> = {
-  Overview: "Copilot-first command center across revenue, tenant onboarding, documents, approvals, and escalations.",
+  Overview: "Persona-relevant command center across operations, tenants, tasks, approvals, and decision support.",
   Profile: "Your account settings, password controls, email change flow, and workspace preferences.",
   Tenants: "Tenant master and onboarding flow powered by the same structure as your mall-level workbook.",
-  Revenue: "Portfolio revenue view with brand search, mall summaries, and rent visibility excluding invoice collection.",
+  Revenue: "Revenue has been merged into tenant and persona views.",
   Tasks: "Create, assign, and track operational work with SLA dates and optional proof of completion.",
   Communications: "Monitor bot-triggered internal and external outreach with lifecycle status tracking.",
   "Document Vault": "Upload onboarding files and operating documents, classify them, and stage them for approval.",
@@ -189,6 +190,8 @@ const defaultProfileDraft: ProfileDraft = {
   timezone: "Asia/Kolkata",
   status: "available",
   theme: "dualtone",
+  ptoFrom: "",
+  ptoTo: "",
   newPassword: "",
   confirmPassword: "",
 };
@@ -205,7 +208,6 @@ const defaultManagedUserDraft: ManagedUserDraft = {
 
 const pagePermissions: Partial<Record<NavPage, string[]>> = {
   Overview: ["view_dashboard"],
-  Revenue: ["view_revenue"],
   Tasks: ["create_tasks", "assign_tasks"],
   Communications: ["send_communications"],
   "Document Vault": ["view_documents", "approve_documents"],
@@ -282,6 +284,24 @@ function canAccessPage(page: NavPage, profile: AuthProfile | null) {
   return requiredPermissions.some((permission) => profile.permissions.includes(permission));
 }
 
+function humanizeErrorMessage(message: string) {
+  const normalized = message.toLowerCase();
+
+  if (normalized.includes("foreign key") || normalized.includes("constraint")) {
+    return "One of the linked records is missing or invalid. Please re-check the assignee and required task fields.";
+  }
+
+  if (normalized.includes("permission") || normalized.includes("unauthorized")) {
+    return "You do not have permission to complete this action.";
+  }
+
+  if (normalized.includes("invalid input syntax")) {
+    return "One of the values entered is not in the expected format.";
+  }
+
+  return message;
+}
+
 function getTenantFieldOptions(fieldKey: string) {
   const options: Record<string, string[]> = {
     Category_Primary: ["Fashion", "F&B", "Electronics", "Footwear", "Beauty", "Entertainment", "Others", "Vacant"],
@@ -296,6 +316,14 @@ function getTenantFieldOptions(fieldKey: string) {
   };
 
   return options[fieldKey] ?? [];
+}
+
+function getDerivedMetric(
+  label: string,
+  value: string,
+  note: string,
+) {
+  return { label, value, note };
 }
 
 function getCommunicationBadge(status: string) {
@@ -513,7 +541,14 @@ function App() {
   const [workspace, setWorkspace] = useState<WorkspaceData | null>(null);
   const [workspaceLoading, setWorkspaceLoading] = useState(true);
   const [workspaceError, setWorkspaceError] = useState<string | null>(null);
-  const [activePage, setActivePage] = useState<NavPage>("Overview");
+  const [activePage, setActivePage] = useState<NavPage>(() => {
+    if (typeof window === "undefined") {
+      return "Overview";
+    }
+
+    const stored = window.localStorage.getItem("vetturo_active_page");
+    return (stored as NavPage) || "Overview";
+  });
   const [isBotOpen, setIsBotOpen] = useState(true);
   const [isNavCollapsed, setIsNavCollapsed] = useState(false);
   const [botMessages, setBotMessages] = useState<BotMessage[]>(initialBotMessages);
@@ -594,6 +629,8 @@ function App() {
         timezone: typeof session?.user?.user_metadata?.timezone === "string" ? session.user.user_metadata.timezone : current.timezone,
         status: typeof session?.user?.user_metadata?.status === "string" ? session.user.user_metadata.status : current.status,
         theme: typeof session?.user?.user_metadata?.theme === "string" ? session.user.user_metadata.theme : current.theme,
+        ptoFrom: typeof session?.user?.user_metadata?.ptoFrom === "string" ? session.user.user_metadata.ptoFrom : current.ptoFrom,
+        ptoTo: typeof session?.user?.user_metadata?.ptoTo === "string" ? session.user.user_metadata.ptoTo : current.ptoTo,
       }));
     } catch (error) {
       setWorkspaceError(error instanceof Error ? error.message : "Failed to load workspace.");
@@ -647,6 +684,12 @@ function App() {
     }
   }, [activePage, visibleNavItems]);
 
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem("vetturo_active_page", activePage);
+    }
+  }, [activePage]);
+
   const tenants = workspace?.tenants ?? [];
   const tasks = workspace?.tasks ?? [];
   const documents = workspace?.documents ?? [];
@@ -694,6 +737,71 @@ function App() {
       topFive,
     };
   }, [tenants]);
+
+  const overviewMetrics = useMemo(() => {
+    const expiringLeases = tenants.filter((tenant) => {
+      if (!tenant.leaseExpiryDate) return false;
+      const expiry = new Date(tenant.leaseExpiryDate).getTime();
+      const now = Date.now();
+      const ninetyDays = 1000 * 60 * 60 * 24 * 90;
+      return Number.isFinite(expiry) && expiry >= now && expiry <= now + ninetyDays;
+    }).length;
+
+    const missingLeaseExpiry = tenants.filter((tenant) => !tenant.leaseExpiryDate).length;
+    const auditCoverage = tenants.filter((tenant) => typeof tenant.lastAuditScore === "number").length;
+    const facilitiesTasks = tasks.filter((task) => (task.department || "").toLowerCase() === "facilities").length;
+    const financeRelevant = communications.filter((item) => (item.purpose || "").toLowerCase().includes("recovery")).length;
+
+    switch (currentProfile?.role) {
+      case "finance":
+        return [
+          getDerivedMetric("Tracked Rent Base", formatCompactCurrency(revenueSummary.total), "Live rent mapped from approved tenant and finance records"),
+          getDerivedMetric("Average Rent", formatCompactCurrency(revenueSummary.average), "Average across currently stored tenant records"),
+          getDerivedMetric(
+            "Recovery Threads",
+            String(financeRelevant),
+            financeRelevant > 0 ? "Finance-related outreach is active" : "Need communication or recovery data to calculate this",
+          ),
+          getDerivedMetric(
+            "Missing Lease Expiry",
+            String(missingLeaseExpiry),
+            missingLeaseExpiry > 0 ? "Add lease expiry dates to improve renewal and escalation finance logic" : "Lease expiry coverage is available",
+          ),
+        ];
+      case "leasing_manager":
+        return [
+          getDerivedMetric("Tenant Count", String(tenants.length), "Brands currently stored in the tenant master"),
+          getDerivedMetric(
+            "Expiring Leases (90d)",
+            String(expiringLeases),
+            missingLeaseExpiry > 0 ? `Need ${missingLeaseExpiry} more lease expiry values for a complete count` : "Based on current lease expiry dates",
+          ),
+          getDerivedMetric("Decision DNA Entries", String(leasingIntel.length), leasingIntel.length > 0 ? "Live leasing evaluations stored" : "Need brand-vetting inputs to calculate this"),
+          getDerivedMetric("Pending Approvals", String(pendingDocuments.length), "Documents waiting to be admitted into memory"),
+        ];
+      case "facilities":
+        return [
+          getDerivedMetric("Open Tasks", String(tasks.length), "Current operational queue"),
+          getDerivedMetric("Facilities Tasks", String(facilitiesTasks), facilitiesTasks > 0 ? "Tasks routed to facilities" : "Need facilities tasks to calculate this"),
+          getDerivedMetric("Proof Required", String(tasks.filter((task) => task.proofRequired).length), "Tasks expecting evidence on closure"),
+          getDerivedMetric("Audit Coverage", `${auditCoverage}/${tenants.length}`, auditCoverage > 0 ? "Brand audit data currently stored" : "Need brand audit or compliance scores to calculate this"),
+        ];
+      case "mall_manager":
+        return [
+          getDerivedMetric("Tenant Count", String(tenants.length), "Brands currently live in the workspace"),
+          getDerivedMetric("Open Tasks", String(tasks.length), "Operational items across departments"),
+          getDerivedMetric("Pending Approvals", String(pendingDocuments.length), "Documents waiting on super admin action"),
+          getDerivedMetric("Tracked Communications", String(communications.length), communications.length > 0 ? "Communication threads are active" : "Need outgoing communication records to calculate this"),
+        ];
+      default:
+        return [
+          getDerivedMetric("Tenant Count", String(tenants.length), "Brands currently stored"),
+          getDerivedMetric("Tracked Rent Base", formatCompactCurrency(revenueSummary.total), "Live rent mapped from tenant records"),
+          getDerivedMetric("Pending Approvals", String(pendingDocuments.length), "Documents waiting to enter core memory"),
+          getDerivedMetric("Open Tasks", String(tasks.length), "Operational queue across teams"),
+        ];
+    }
+  }, [communications.length, currentProfile?.role, leasingIntel.length, pendingDocuments.length, revenueSummary.average, revenueSummary.total, tasks, tenants]);
 
   const paginatedTenantResults = useMemo(() => {
     const start = (tenantPage - 1) * tenantPageSize;
@@ -748,15 +856,13 @@ function App() {
     const id = `${role}-${Date.now()}-${Math.random()}`;
     setBotMessages((messages) => [...messages, { id, role, text }]);
 
-    if (role === "assistant") {
+    if (role === "assistant" && !isBotOpen) {
       setBotToast({ id, text });
       window.setTimeout(() => {
         setBotToast((current) => (current?.id === id ? null : current));
       }, 5000);
 
-      if (!isBotOpen) {
-        setHasUnreadBot(true);
-      }
+      setHasUnreadBot(true);
     }
   }
 
@@ -791,6 +897,7 @@ function App() {
     await supabase.auth.signOut();
     setBotMessages(initialBotMessages);
     setActivePage("Overview");
+    window.localStorage.removeItem("vetturo_active_page");
   }
 
   async function handlePasswordReset() {
@@ -838,6 +945,8 @@ function App() {
         timezone: profileDraft.timezone,
         status: profileDraft.status,
         theme: profileDraft.theme,
+        ptoFrom: profileDraft.ptoFrom,
+        ptoTo: profileDraft.ptoTo,
       };
 
       const updates = [];
@@ -952,7 +1061,9 @@ function App() {
       pushBot("assistant", "Task created and routed into the operational queue.");
       await loadWorkspace();
     } catch (error) {
-      setWorkspaceError(error instanceof Error ? error.message : "Task creation failed.");
+      setWorkspaceError(
+        error instanceof Error ? humanizeErrorMessage(error.message) : "Task creation failed. Please check the entered details.",
+      );
     } finally {
       setSavingState(null);
     }
@@ -1228,21 +1339,28 @@ function App() {
             {!isNavCollapsed ? (
               <div>
                 <p className="sidebar-kicker">Vetturo OS</p>
-                <h1>{workspace?.organization?.organizationName || "Vetturo"}</h1>
               </div>
             ) : (
               <strong className="mini-brand">V</strong>
             )}
             <button className="icon-button" onClick={() => setIsNavCollapsed((current) => !current)} type="button">
-              {isNavCollapsed ? "Expand" : "Collapse"}
+              {isNavCollapsed ? "☰" : "☰"}
             </button>
           </div>
           {!isNavCollapsed ? (
-            <p className="sidebar-copy">
-              {currentProfile
-                ? `${currentProfile.fullName} • ${toTitle(currentProfile.role)}`
-                : "Secure mall operations workspace"}
-            </p>
+            <>
+              <p className="sidebar-copy">
+                {currentProfile
+                  ? `${currentProfile.fullName} • ${toTitle(currentProfile.role)}`
+                  : "Secure mall operations workspace"}
+              </p>
+              <p className="sidebar-status">
+                {toTitle(profileDraft.status)}
+                {profileDraft.status === "PTO" && profileDraft.ptoFrom && profileDraft.ptoTo
+                  ? ` • ${formatDate(profileDraft.ptoFrom)} to ${formatDate(profileDraft.ptoTo)}`
+                  : ""}
+              </p>
+            </>
           ) : null}
         </div>
 
@@ -1259,19 +1377,21 @@ function App() {
           ))}
         </nav>
 
-        {visibleNavItems.includes("Profile") ? (
-          <button
-            className={`nav-button ${activePage === "Profile" ? "active" : ""}`}
-            onClick={() => setActivePage("Profile")}
-            type="button"
-          >
-            {isNavCollapsed ? "P" : "Profile"}
-          </button>
-        ) : null}
+        <div className="sidebar-footer-row">
+          {visibleNavItems.includes("Profile") ? (
+            <button
+              className={`nav-button footer-nav-button ${activePage === "Profile" ? "active" : ""}`}
+              onClick={() => setActivePage("Profile")}
+              type="button"
+            >
+              {isNavCollapsed ? "P" : "Profile"}
+            </button>
+          ) : null}
 
-        <button className="secondary-button full-width" onClick={handleLogout} type="button">
-          {isNavCollapsed ? "Out" : "Logout"}
-        </button>
+          <button className="secondary-button footer-nav-button" onClick={handleLogout} type="button">
+            {isNavCollapsed ? "Out" : "Logout"}
+          </button>
+        </div>
       </aside>
 
       <main className="main-panel">
@@ -1309,6 +1429,7 @@ function App() {
             leasingIntel={leasingIntel}
             managedUserDraft={managedUserDraft}
             onboardingGaps={onboardingGaps}
+            overviewMetrics={overviewMetrics}
             pendingApproval={pendingApproval}
             pendingConflicts={pendingConflicts}
             pendingDocuments={pendingDocuments}
@@ -1493,6 +1614,7 @@ interface PageRendererProps {
   leasingIntel: DecisionDnaRecord[];
   managedUserDraft: ManagedUserDraft;
   onboardingGaps: OnboardingGap[];
+  overviewMetrics: { label: string; value: string; note: string }[];
   pendingApproval: DocumentRecord | null;
   pendingConflicts: string[];
   pendingDocuments: DocumentRecord[];
@@ -1556,6 +1678,7 @@ function PageRenderer(props: PageRendererProps) {
     leasingIntel,
     managedUserDraft,
     onboardingGaps,
+    overviewMetrics,
     pendingApproval,
     pendingConflicts,
     pendingDocuments,
@@ -1657,6 +1780,18 @@ function PageRenderer(props: PageRendererProps) {
                 </select>
               </label>
             </div>
+            {profileDraft.status === "PTO" ? (
+              <div className="field-row">
+                <label className="field">
+                  <span>PTO From</span>
+                  <input type="date" value={profileDraft.ptoFrom} onChange={(event) => setProfileDraft((draft) => ({ ...draft, ptoFrom: event.target.value }))} />
+                </label>
+                <label className="field">
+                  <span>PTO To</span>
+                  <input type="date" value={profileDraft.ptoTo} onChange={(event) => setProfileDraft((draft) => ({ ...draft, ptoTo: event.target.value }))} />
+                </label>
+              </div>
+            ) : null}
             <label className="field">
               <span>Theme</span>
               <select value={profileDraft.theme} onChange={(event) => setProfileDraft((draft) => ({ ...draft, theme: event.target.value }))}>
@@ -1722,56 +1857,55 @@ function PageRenderer(props: PageRendererProps) {
     return (
       <>
         <section className="metrics-grid four-up">
-          <MetricCard label="Tenant Count" value={String(tenantResults.length)} note="Live portfolio" />
-          <MetricCard label="Rent Base" value={formatCompactCurrency(revenueSummary.total)} note="Current tracked rent" />
-          <MetricCard label="Pending Approvals" value={String(pendingDocuments.length)} note="Documents waiting on review" />
-          <MetricCard label="Open Tasks" value={String(tasks.length)} note="Operational items in system" />
+          {overviewMetrics.map((metric) => (
+            <MetricCard key={metric.label} label={metric.label} value={metric.value} note={metric.note} />
+          ))}
         </section>
         <section className="content-grid balanced">
           <article className="panel">
             <div className="panel-header">
               <div>
-                <p className="panel-kicker">Onboarding Gaps</p>
-                <h3>What the bot still needs</h3>
+                <p className="panel-kicker">Task Pulse</p>
+                <h3>Operational queue</h3>
               </div>
             </div>
             <div className="thread-list">
-              {onboardingGaps.length > 0 ? (
-                onboardingGaps.slice(0, 6).map((gap) => (
-                  <div className="thread-card" key={`${gap.scope}-${gap.recordLabel}`}>
-                    <strong>{gap.recordLabel}</strong>
-                    <p>{gap.scope === "organization" ? "Organization onboarding" : "Tenant onboarding"}</p>
-                    <small>{gap.missingFields.join(", ")}</small>
+              {tasks.length > 0 ? (
+                tasks.slice(0, 6).map((task) => (
+                  <div className="thread-card" key={task.id}>
+                    <strong>{task.title}</strong>
+                    <p>{task.department || "Unassigned department"} • {task.priority || "No priority set"}</p>
+                    <small>{task.assignedToName || "Unassigned"} • SLA {formatDate(task.slaDueAt)}</small>
                   </div>
                 ))
               ) : (
-                <div className="empty-row">No required onboarding gaps detected.</div>
+                <div className="empty-row">No tasks are in the queue yet.</div>
               )}
             </div>
           </article>
           <article className="panel">
             <div className="panel-header">
               <div>
-                <p className="panel-kicker">Communication Status</p>
-                <h3>Latest threads</h3>
+                <p className="panel-kicker">Memory Intake</p>
+                <h3>Documents and approvals</h3>
               </div>
             </div>
             <div className="thread-list">
-              {communications.length > 0 ? (
-                communications.slice(0, 5).map((thread) => (
-                  <div className="thread-card" key={thread.id}>
+              {documents.length > 0 ? (
+                documents.slice(0, 5).map((document) => (
+                  <div className="thread-card" key={document.id}>
                     <div className="thread-topline">
-                      <strong>{thread.subject || thread.purpose}</strong>
-                      <span className={`badge ${getCommunicationBadge(thread.currentStatus)}`}>
-                        {thread.currentStatus}
+                      <strong>{document.fileName}</strong>
+                      <span className={`badge ${getDocumentBadge(document.status)}`}>
+                        {document.status}
                       </span>
                     </div>
-                    <p>{thread.recipientName}</p>
-                    <small>{toTitle(thread.channel)} • {formatDate(thread.createdAt)}</small>
+                    <p>{document.domainCategory || "Uncategorized"} • {document.subCategory || "No sub-category"}</p>
+                    <small>{document.isInCoreMemory ? "In core memory" : "Awaiting memory admission"}</small>
                   </div>
                 ))
               ) : (
-                <div className="empty-row">No communications tracked yet.</div>
+                <div className="empty-row">No approved documents or uploads yet.</div>
               )}
             </div>
           </article>
@@ -1871,6 +2005,15 @@ function PageRenderer(props: PageRendererProps) {
                 <BarMetric label="Rent vs category average" value={selectedTenant.rent} max={Math.max(...tenantResults.filter((tenant) => tenant.categoryPrimary === selectedTenant.categoryPrimary).map((tenant) => tenant.rent), selectedTenant.rent, 1)} />
                 <BarMetric label="Area footprint" value={selectedTenant.unitGlaSba || 0} max={Math.max(...tenantResults.map((tenant) => tenant.unitGlaSba || 0), selectedTenant.unitGlaSba || 0, 1)} />
                 <BarMetric label="Audit / health ratio" value={selectedTenant.lastAuditScore || 0} max={100} />
+              </div>
+              <div className="thread-card">
+                <strong>Onboarding gaps</strong>
+                <p>
+                  {onboardingGaps
+                    .filter((gap) => gap.recordLabel.toLowerCase() === selectedTenant.brandName.toLowerCase())
+                    .flatMap((gap) => gap.missingFields)
+                    .join(", ") || "No required onboarding gaps detected for this brand."}
+                </p>
               </div>
             </div>
           ) : (

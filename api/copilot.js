@@ -168,7 +168,7 @@ export default async function handler(req, res) {
       if (genericRevenueQuery) {
         return sendJson(res, 200, {
           reply: `Across the currently tracked tenant records, the total mapped rent base is ${currency(total)}.`,
-          action: { page: "Revenue" },
+          action: { page: "Tenants" },
         });
       }
 
@@ -178,13 +178,13 @@ export default async function handler(req, res) {
         const totalMatching = matching.reduce((sum, row) => sum + Number(row.rent || 0), 0);
         return sendJson(res, 200, {
           reply: `${matching[0].brandName} is currently mapped to ${matching.length} record(s) with total tracked rent of ${currency(totalMatching)}.`,
-          action: { page: "Revenue" },
+          action: { page: "Tenants" },
         });
       }
 
       return sendJson(res, 200, {
         reply: `Across the currently tracked tenant records, the total mapped rent base is ${currency(total)}.`,
-        action: { page: "Revenue" },
+        action: { page: "Tenants" },
       });
     }
 
@@ -197,7 +197,7 @@ export default async function handler(req, res) {
         if (mgRow) {
           return sendJson(res, 200, {
             reply: `The approved finance workbook shows MG Rent total at ${mgRow.total} with an average of ${mgRow.average}.`,
-            action: { page: "Revenue" },
+            action: { page: "Tenants" },
           });
         }
       }
@@ -207,7 +207,7 @@ export default async function handler(req, res) {
         if (camRow) {
           return sendJson(res, 200, {
             reply: `The approved finance workbook shows CAM total at ${camRow.total} with an average of ${camRow.average}.`,
-            action: { page: "Revenue" },
+            action: { page: "Tenants" },
           });
         }
       }
@@ -217,13 +217,13 @@ export default async function handler(req, res) {
         if (salesRow) {
           return sendJson(res, 200, {
             reply: `The approved finance workbook shows GTO Sales total at ${salesRow.total} with an average of ${salesRow.average}.`,
-            action: { page: "Revenue" },
+            action: { page: "Tenants" },
           });
         }
       }
     }
 
-    if ((normalized.includes("brand") || normalized.includes("tenant")) && rentRollRows.length > 0) {
+    if (rentRollRows.length > 0) {
       const matchingFinanceBrand = findBrandMatches(
         rentRollRows.map((row) => ({
           brandName: row["Brand Name"] || row["Customer Name"] || "",
@@ -238,8 +238,9 @@ export default async function handler(req, res) {
         );
 
         if (matchedRow) {
+          const mgValue = matchedRow["Current MG (Per Month)"] || matchedRow["Escalated /New Rent"] || matchedRow["Current Rent"] || matchedRow["Rent"] || "N/A";
           return sendJson(res, 200, {
-            reply: `${matchedName} is in the approved rent roll for unit ${matchedRow["Unit No"] || "N/A"} with current MG ${matchedRow["Current MG (Per Month)"] || matchedRow["Current Rent"] || "N/A"}, category ${matchedRow["Sales Category"] || matchedRow["Category"] || "N/A"}, and lease expiry ${matchedRow["Ultimate Lease Expiry date"] || matchedRow["Original Lease End Date"] || "N/A"}.`,
+            reply: `${matchedName} is in the approved rent roll for unit ${matchedRow["Unit No"] || "N/A"} with current MG ${mgValue}, category ${matchedRow["Sales Category"] || matchedRow["Category"] || "N/A"}, and lease expiry ${matchedRow["Ultimate Lease Expiry date"] || matchedRow["Original Lease End Date"] || "N/A"}.`,
             action: { page: "Tenants" },
           });
         }
