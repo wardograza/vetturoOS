@@ -1,32 +1,21 @@
-import { useState } from "react";
 import {
-  alerts,
   brandDecisions,
   metricCardsByPersona,
   personas,
 } from "./data";
-import type { PersonaId } from "./types";
 
 function App() {
-  const [activePersona, setActivePersona] = useState<PersonaId>("mall_manager");
+  const activePersona = "mall_manager";
 
   const active = personas.find((p) => p.id === activePersona) || personas[0];
   const metrics = metricCardsByPersona[activePersona] || [];
 
-  // SAFE FALLBACK DATA (prevents crashes)
-  const safeCommunications = [
-    {
-      subject: "No communication available",
-      recipient: "—",
-      channel: "—",
-      status: "—",
-      events: [],
-    },
-  ];
-
-  const communications = safeCommunications;
-
-  const primaryCommunication = communications[0];
+  const primaryCommunication = {
+    subject: "No communication available",
+    recipient: "—",
+    channel: "—",
+    status: "—",
+  };
 
   const primaryDecision =
     brandDecisions?.[0] || {
@@ -49,7 +38,7 @@ function App() {
 
         {/* Metrics */}
         <div style={{ display: "flex", gap: 16, marginBottom: 20 }}>
-          {metrics.map((m) => (
+          {metrics.map((m: any) => (
             <div
               key={m.id}
               style={{
