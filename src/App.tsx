@@ -251,7 +251,7 @@ function App() {
           <div className="panel-header">
             <div>
               <p className="section-label">Live communication</p>
-              <h3>{primaryCommunication.subject}</h3>
+              <h3>{primaryCommunication?.subject || 'No subject'}</h3>
             </div>
             <button className="ghost-button" onClick={handleTriggerNudges}>
               Advance thread
@@ -416,7 +416,7 @@ function App() {
               {communicationState.map((comm) => (
                 <div className="signal-row expanded" key={comm.id}>
                   <div>
-                    <strong>{comm.subject}</strong>
+                    <strong>{comm?.subject || 'No subject'}</strong>
                     <p>
                       {comm.recipient} • {comm.channel} • {comm.purpose}
                     </p>
