@@ -157,7 +157,7 @@ export default async function handler(req, res) {
     } catch (_error) {
       return sendJson(res, 200, {
         reply:
-          "OpenAI credits are unavailable right now, so I’ve fallen back to deterministic workspace logic. I can still answer revenue totals, onboarding gaps, and other structured data questions from the current database.",
+          "I can still help using the structured data currently available in the workspace. For this question, I need either additional approved onboarding data or a live AI provider response path.",
       });
     }
   } catch (error) {
