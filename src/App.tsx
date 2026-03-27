@@ -616,7 +616,7 @@ function App() {
     setWorkspaceError(null);
 
     try {
-      const data = await fetchWorkspaceData();
+      const data = await fetchWorkspaceData(session?.access_token);
       setWorkspace(data);
       setConfigDraft(getConfigDraft(data.config));
 
@@ -894,19 +894,25 @@ function App() {
     let loginEmailAddress = loginEmail.trim();
 
     if (!loginEmailAddress.includes("@")) {
-      const { data: matchedProfiles, error: profileLookupError } = await supabase
-        .from("profiles")
-        .select("email")
-        .eq("username", loginEmailAddress)
-        .limit(1);
+      const lookupResponse = await fetch("/api/auth-lookup", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          username: loginEmailAddress,
+        }),
+      });
 
-      if (profileLookupError || !matchedProfiles?.[0]?.email) {
-        setLoginError("That username could not be found.");
+      const lookupJson = (await lookupResponse.json()) as { email?: string; error?: string };
+
+      if (!lookupResponse.ok || !lookupJson.email) {
+        setLoginError(lookupJson.error || "That username could not be found.");
         setSubmittingLogin(false);
         return;
       }
 
-      loginEmailAddress = matchedProfiles[0].email;
+      loginEmailAddress = lookupJson.email;
     }
 
     const { error } = await supabase.auth.signInWithPassword({

@@ -258,7 +258,19 @@ function buildOnboardingGaps(
   return gaps;
 }
 
-export async function fetchWorkspaceData(): Promise<WorkspaceData> {
+export async function fetchWorkspaceData(accessToken?: string): Promise<WorkspaceData> {
+  if (typeof window !== "undefined" && accessToken) {
+    const response = await fetch("/api/workspace", {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    });
+
+    if (response.ok) {
+      return (await response.json()) as WorkspaceData;
+    }
+  }
+
   const [
     organizationResult,
     tenantResult,

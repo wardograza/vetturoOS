@@ -78,6 +78,17 @@ select {
   border-radius: 14px;
   background: var(--input-bg);
   color: var(--input-text);
+  caret-color: var(--input-text);
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: var(--text-soft);
+}
+
+option {
+  color: var(--input-text);
+  background: var(--input-bg);
 }
 
 textarea {
