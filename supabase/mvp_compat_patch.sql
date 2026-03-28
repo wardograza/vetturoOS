@@ -104,6 +104,16 @@ begin
   end if;
 end $$;
 
+create table if not exists public.task_events (
+  id uuid primary key default gen_random_uuid(),
+  task_id uuid not null references public.tasks(id) on delete cascade,
+  event_type text not null,
+  event_message text not null,
+  payload jsonb,
+  created_by uuid references auth.users(id) on delete set null,
+  created_at timestamptz not null default now()
+);
+
 do $$
 begin
   if exists (select 1 from information_schema.tables where table_schema = 'public' and table_name = 'communications') then

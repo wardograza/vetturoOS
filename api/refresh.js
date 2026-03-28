@@ -116,6 +116,23 @@ async function fetchTasksForWorkspace() {
   return { data: [], error: null };
 }
 
+async function fetchTaskEventsForWorkspace() {
+  const variants = [
+    "id, task_id, event_type, event_message, created_by, created_at, payload",
+    "id, task_id, event_type, event_message, created_by, created_at",
+    "id, task_id, event_type, event_message, created_at",
+  ];
+
+  for (const select of variants) {
+    const result = await admin.from("task_events").select(select);
+    if (!result.error) {
+      return result;
+    }
+  }
+
+  return { data: [], error: null };
+}
+
 export default async function handler(req, res) {
   try {
     if (req.method === "POST") {
@@ -143,7 +160,25 @@ export default async function handler(req, res) {
           admin.from("app_configs").select("id, alert_threshold_p1_minutes, alert_threshold_p2_minutes, alert_threshold_p3_minutes, data_refresh_minutes, auto_escalation_enabled, email_enabled, whatsapp_enabled, bot_approval_probe_enabled, updated_at"),
         ]);
 
-        const tasksResult = await fetchTasksForWorkspace();
+        const [tasksResult, taskEventsResult] = await Promise.all([
+          fetchTasksForWorkspace(),
+          fetchTaskEventsForWorkspace(),
+        ]);
+        const eventsByTaskId = new Map();
+        (taskEventsResult.data || []).forEach((event) => {
+          const taskId = String(event.task_id || "");
+          if (!taskId) return;
+          const list = eventsByTaskId.get(taskId) || [];
+          list.push({
+            id: String(event.id),
+            eventType: String(event.event_type || "event"),
+            eventMessage: String(event.event_message || ""),
+            createdBy: event.created_by ?? null,
+            createdAt: event.created_at ?? null,
+            payload: event.payload ?? null,
+          });
+          eventsByTaskId.set(taskId, list);
+        });
 
         const organizationRow = organizationResult.data?.[0];
         const organization = organizationRow
@@ -205,6 +240,7 @@ export default async function handler(req, res) {
             proofRequired: Boolean(row.proof_required),
             slaDueAt: row.sla_due_at ?? null,
             createdAt: row.created_at ?? null,
+            eventLog: eventsByTaskId.get(String(row.id)) || [],
           })),
           communications: (communicationsResult.data || []).map((row) => ({
             id: String(row.id),

@@ -194,6 +194,23 @@ async function fetchTasks(): Promise<{ data: Record<string, unknown>[]; warning?
   );
 }
 
+async function fetchTaskEvents(): Promise<{ data: Record<string, unknown>[]; warning?: string }> {
+  const variants = [
+    "id, task_id, event_type, event_message, created_by, created_at, payload",
+    "id, task_id, event_type, event_message, created_by, created_at",
+    "id, task_id, event_type, event_message, created_at",
+  ];
+
+  for (const select of variants) {
+    const result = await safeSelect<Record<string, unknown>>("task_events", select);
+    if (result.data.length > 0 || !result.warning) {
+      return result;
+    }
+  }
+
+  return { data: [], warning: "task_events: unavailable" };
+}
+
 function computeMissingFields(
   payload: Record<string, string | number | boolean | null>,
   requiredKeys: string[],
@@ -271,6 +288,7 @@ export async function fetchWorkspaceData(accessToken?: string): Promise<Workspac
     organizationResult,
     tenantResult,
     tasksResult,
+    taskEventsResult,
     communicationsResult,
     documentsResult,
     dnaResult,
@@ -284,6 +302,7 @@ export async function fetchWorkspaceData(accessToken?: string): Promise<Workspac
     ),
     fetchTenantProfiles(),
     fetchTasks(),
+    fetchTaskEvents(),
     safeSelect<Record<string, unknown>>(
       "communications",
       "id, recipient_name, recipient_email, recipient_phone, channel, purpose, subject, body_preview, current_status, escalation_level, requires_action, sla_due_at, created_at",
@@ -314,6 +333,7 @@ export async function fetchWorkspaceData(accessToken?: string): Promise<Workspac
     organizationResult.warning,
     tenantResult.warning,
     tasksResult.warning,
+    taskEventsResult.warning,
     communicationsResult.warning,
     documentsResult.warning,
     dnaResult.warning,
@@ -391,6 +411,32 @@ export async function fetchWorkspaceData(accessToken?: string): Promise<Workspac
   }));
 
   const profileNameById = new Map(profiles.map((profile) => [profile.id, profile.fullName]));
+  const taskEventsByTaskId = new Map<string, {
+    id: string;
+    eventType: string;
+    eventMessage: string;
+    createdBy: string | null;
+    createdAt: string | null;
+    payload: Record<string, unknown> | null;
+  }[]>();
+
+  taskEventsResult.data.forEach((row) => {
+    const taskId = String(row.task_id ?? "");
+    if (!taskId) {
+      return;
+    }
+
+    const list = taskEventsByTaskId.get(taskId) || [];
+    list.push({
+      id: String(row.id),
+      eventType: String(row.event_type ?? "event"),
+      eventMessage: String(row.event_message ?? ""),
+      createdBy: (row.created_by as string | null) ?? null,
+      createdAt: (row.created_at as string | null) ?? null,
+      payload: (row.payload as Record<string, unknown> | null) ?? null,
+    });
+    taskEventsByTaskId.set(taskId, list);
+  });
 
   const tasks: TaskRecord[] = tasksResult.data.map((row) => ({
     id: String(row.id),
@@ -404,6 +450,7 @@ export async function fetchWorkspaceData(accessToken?: string): Promise<Workspac
     proofRequired: Boolean(row.proof_required),
     slaDueAt: (row.sla_due_at as string | null) ?? null,
     createdAt: (row.created_at as string | null) ?? null,
+    eventLog: taskEventsByTaskId.get(String(row.id)) ?? [],
   }));
 
   const invites: InviteRecord[] = invitesResult.data.map((row) => ({

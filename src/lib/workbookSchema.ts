@@ -126,12 +126,13 @@ export const documentDomainOptions = [
 
 export const invitePermissionOptions = [
   "view_dashboard",
-  "view_revenue",
   "view_documents",
   "approve_documents",
   "create_tasks",
   "assign_tasks",
-  "send_communications",
+  "task_scope_my",
+  "task_scope_department",
+  "task_scope_all",
   "view_leasing_intel",
   "manage_configs",
   "invite_users",

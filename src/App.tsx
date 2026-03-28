@@ -39,6 +39,14 @@ interface TaskDraft {
   slaDueAt: string;
 }
 
+interface TaskManageDraft {
+  status: string;
+  assignedToId: string;
+  priority: string;
+  slaDueAt: string;
+  comment: string;
+}
+
 interface InviteDraft {
   fullName: string;
   username: string;
@@ -165,7 +173,7 @@ const defaultInviteDraft: InviteDraft = {
   email: "",
   phoneNumber: "",
   role: "mall_manager",
-  permissions: ["view_dashboard", "view_revenue", "view_documents"],
+  permissions: ["view_dashboard", "task_scope_my", "view_documents"],
 };
 
 const defaultLeasingDraft: LeasingDraft = {
@@ -209,9 +217,17 @@ const defaultManagedUserDraft: ManagedUserDraft = {
   permissions: [],
 };
 
+const defaultTaskManageDraft: TaskManageDraft = {
+  status: "open",
+  assignedToId: "",
+  priority: "P2",
+  slaDueAt: "",
+  comment: "",
+};
+
 const pagePermissions: Partial<Record<NavPage, string[]>> = {
   Overview: ["view_dashboard"],
-  Tasks: ["create_tasks", "assign_tasks"],
+  Tasks: ["create_tasks", "assign_tasks", "task_scope_my", "task_scope_department", "task_scope_all"],
   "Document Vault": ["view_documents", "approve_documents"],
   "Leasing Intel": ["view_leasing_intel"],
   Approvals: ["approve_documents"],
@@ -259,6 +275,24 @@ function toTitle(value: string) {
     .filter(Boolean)
     .map((segment) => segment.charAt(0).toUpperCase() + segment.slice(1))
     .join(" ");
+}
+
+function getPermissionLabel(permission: string) {
+  const labels: Record<string, string> = {
+    view_dashboard: "Dashboard",
+    view_documents: "Document Vault",
+    approve_documents: "Approvals",
+    create_tasks: "Create Tasks",
+    assign_tasks: "Assign Tasks",
+    task_scope_my: "My Tasks",
+    task_scope_department: "Dept Tasks",
+    task_scope_all: "Live Tasks",
+    view_leasing_intel: "Leasing Intel",
+    manage_configs: "Configs",
+    invite_users: "Invite User",
+  };
+
+  return labels[permission] || toTitle(permission);
 }
 
 function canAccessPage(page: NavPage, profile: AuthProfile | null) {
@@ -643,6 +677,8 @@ function App() {
   const [selectedTenantId, setSelectedTenantId] = useState<string | null>(null);
   const [tenantDetailState, setTenantDetailState] = useState<TenantDetailState>({ open: false, tenantId: null });
   const [managedUserDraft, setManagedUserDraft] = useState<ManagedUserDraft>(defaultManagedUserDraft);
+  const [taskDetailId, setTaskDetailId] = useState<string | null>(null);
+  const [taskManageDraft, setTaskManageDraft] = useState<TaskManageDraft>(defaultTaskManageDraft);
 
   useEffect(() => {
     if (!supabase) {
@@ -876,6 +912,36 @@ function App() {
     }
   }, [communications.length, currentProfile?.role, leasingIntel.length, pendingDocuments.length, revenueSummary.average, revenueSummary.total, tasks, tenants]);
 
+  const visibleTaskRecords = useMemo(() => {
+    const permissions = currentProfile?.permissions ?? [];
+    const role = currentProfile?.role ?? "";
+    const myTasks = currentProfile
+      ? tasks.filter((task) => task.assignedToId === currentProfile.id)
+      : [];
+    const deptTasks = currentProfile
+      ? tasks.filter((task) => {
+          if (task.assignedToId === currentProfile.id) {
+            return false;
+          }
+          if (role === "facilities" && task.department === "facilities") return true;
+          if (role === "finance" && task.department === "finance") return true;
+          if (role === "leasing_manager" && task.department === "leasing") return true;
+          if (role === "mall_manager" && task.department === "operations") return true;
+          return false;
+        })
+      : [];
+    const liveTasks = tasks;
+
+    return {
+      myTasks,
+      deptTasks,
+      liveTasks,
+      canSeeMy: permissions.includes("task_scope_my") || role === "super_admin",
+      canSeeDept: permissions.includes("task_scope_department") || role === "super_admin",
+      canSeeLive: permissions.includes("task_scope_all") || role === "super_admin",
+    };
+  }, [currentProfile, tasks]);
+
   const paginatedTenantResults = useMemo(() => {
     const start = (tenantPage - 1) * tenantPageSize;
     return tenantResults.slice(start, start + tenantPageSize);
@@ -897,6 +963,11 @@ function App() {
       return stats && typeof stats === "object" ? (stats as Record<string, unknown>) : null;
     },
     [detailTenant],
+  );
+
+  const selectedTask = useMemo(
+    () => tasks.find((task) => task.id === taskDetailId) ?? null,
+    [taskDetailId, tasks],
   );
 
   useEffect(() => {
@@ -1162,6 +1233,7 @@ function App() {
       }
 
       pushBot("assistant", result.reply);
+      await loadWorkspace();
     } catch (error) {
       pushBot("assistant", error instanceof Error ? error.message : "The copilot could not complete that request.");
     }
@@ -1182,6 +1254,35 @@ function App() {
           ? `Task creation failed. ${humanizeErrorMessage(error.message)}`
           : "Task creation failed. Please check the entered details.",
       );
+    } finally {
+      setSavingState(null);
+    }
+  }
+
+  async function handleTaskManage(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!selectedTask) {
+      return;
+    }
+
+    setSavingState("task-manage");
+
+    try {
+      await callApi("/api/tasks", {
+        action: "update_task",
+        taskId: selectedTask.id,
+        status: taskManageDraft.status,
+        assignedToId: taskManageDraft.assignedToId,
+        priority: taskManageDraft.priority,
+        slaDueAt: taskManageDraft.slaDueAt,
+        comment: taskManageDraft.comment,
+      });
+      pushBot("assistant", "Task updated and logged.");
+      setTaskManageDraft(defaultTaskManageDraft);
+      setTaskDetailId(null);
+      await loadWorkspace();
+    } catch (error) {
+      setWorkspaceError(error instanceof Error ? error.message : "Task update failed.");
     } finally {
       setSavingState(null);
     }
@@ -1572,6 +1673,8 @@ function App() {
             setShowProfileConfirmPassword={setShowProfileConfirmPassword}
             setShowProfilePassword={setShowProfilePassword}
             setTaskDraft={setTaskDraft}
+            setTaskDetailId={setTaskDetailId}
+            setTaskManageDraft={setTaskManageDraft}
             setTenantDraft={setTenantDraft}
             setSelectedTenantId={setSelectedTenantId}
             setTenantDetailState={setTenantDetailState}
@@ -1584,6 +1687,7 @@ function App() {
             showProfilePassword={showProfilePassword}
             taskDraft={taskDraft}
             tasks={tasks}
+            taskScopes={visibleTaskRecords}
             tenantDraft={tenantDraft}
             tenantPage={tenantPage}
             tenantPageSize={tenantPageSize}
@@ -1776,6 +1880,82 @@ function App() {
           </section>
         </div>
       ) : null}
+
+      {selectedTask ? (
+        <div className="modal-scrim" onClick={() => setTaskDetailId(null)}>
+          <section className="modal-card tenant-modal" onClick={(event) => event.stopPropagation()}>
+            <div className="panel-header">
+              <div>
+                <p className="panel-kicker">Task Detail</p>
+                <h3>{selectedTask.title}</h3>
+              </div>
+              <button className="icon-button" onClick={() => setTaskDetailId(null)} type="button">
+                ×
+              </button>
+            </div>
+            <form className="form-stack" onSubmit={handleTaskManage}>
+              <div className="thread-card">
+                <strong>{selectedTask.department || "No department"} • {selectedTask.priority || "No priority"}</strong>
+                <p>{selectedTask.description || "No description provided."}</p>
+                <small>{selectedTask.assignedToName || "Unassigned"} • SLA {formatDate(selectedTask.slaDueAt)}</small>
+              </div>
+              <div className="field-row">
+                <label className="field">
+                  <span>Status</span>
+                  <select value={taskManageDraft.status} onChange={(event) => setTaskManageDraft((draft) => ({ ...draft, status: event.target.value }))}>
+                    {["open", "assigned", "in_progress", "awaiting_approval", "closed", "reopened"].map((option) => (
+                      <option key={option} value={option}>{toTitle(option)}</option>
+                    ))}
+                  </select>
+                </label>
+                <label className="field">
+                  <span>Priority</span>
+                  <select value={taskManageDraft.priority} onChange={(event) => setTaskManageDraft((draft) => ({ ...draft, priority: event.target.value }))}>
+                    {["P1", "P2", "P3"].map((option) => (
+                      <option key={option} value={option}>{option}</option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+              <label className="field">
+                <span>Assign To</span>
+                <select value={taskManageDraft.assignedToId} onChange={(event) => setTaskManageDraft((draft) => ({ ...draft, assignedToId: event.target.value }))}>
+                  <option value="">Unassigned</option>
+                  {workspace?.profiles
+                    .filter((profile) => String(profile.availabilityStatus || "").toLowerCase() !== "pto")
+                    .map((profile) => (
+                      <option key={profile.id} value={profile.id}>{profile.fullName}</option>
+                    ))}
+                </select>
+              </label>
+              <label className="field">
+                <span>SLA Due At</span>
+                <input type="datetime-local" value={taskManageDraft.slaDueAt} onChange={(event) => setTaskManageDraft((draft) => ({ ...draft, slaDueAt: event.target.value }))} />
+              </label>
+              <label className="field">
+                <span>Add Comment</span>
+                <textarea rows={3} value={taskManageDraft.comment} onChange={(event) => setTaskManageDraft((draft) => ({ ...draft, comment: event.target.value }))} />
+              </label>
+              <button className="primary-button full-width" disabled={savingState === "task-manage"} type="submit">
+                {savingState === "task-manage" ? "Saving…" : "Update task"}
+              </button>
+            </form>
+            <div className="thread-list top-gap">
+              {selectedTask.eventLog.length > 0 ? (
+                selectedTask.eventLog.map((event) => (
+                  <div className="thread-card" key={event.id}>
+                    <strong>{toTitle(event.eventType)}</strong>
+                    <p>{event.eventMessage}</p>
+                    <small>{formatDate(event.createdAt)}</small>
+                  </div>
+                ))
+              ) : (
+                <div className="empty-row">No task activity logged yet.</div>
+              )}
+            </div>
+          </section>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -1813,6 +1993,8 @@ interface PageRendererProps {
   setSelectedTenantId: React.Dispatch<React.SetStateAction<string | null>>;
   setTenantDetailState: React.Dispatch<React.SetStateAction<TenantDetailState>>;
   setTaskDraft: React.Dispatch<React.SetStateAction<TaskDraft>>;
+  setTaskDetailId: React.Dispatch<React.SetStateAction<string | null>>;
+  setTaskManageDraft: React.Dispatch<React.SetStateAction<TaskManageDraft>>;
   setTenantPage: React.Dispatch<React.SetStateAction<number>>;
   setTenantPageSize: React.Dispatch<React.SetStateAction<number>>;
   setTenantDraft: React.Dispatch<React.SetStateAction<TenantDraft>>;
@@ -1823,6 +2005,14 @@ interface PageRendererProps {
   showProfilePassword: boolean;
   taskDraft: TaskDraft;
   tasks: TaskRecord[];
+  taskScopes: {
+    myTasks: TaskRecord[];
+    deptTasks: TaskRecord[];
+    liveTasks: TaskRecord[];
+    canSeeMy: boolean;
+    canSeeDept: boolean;
+    canSeeLive: boolean;
+  };
   tenantDraft: TenantDraft;
   tenantPage: number;
   tenantPageCount: number;
@@ -1876,6 +2066,8 @@ function PageRenderer(props: PageRendererProps) {
     setSelectedTenantId,
     setTenantDetailState,
     setTaskDraft,
+    setTaskDetailId,
+    setTaskManageDraft,
     setTenantPage,
     setTenantPageSize,
     setTenantDraft,
@@ -1886,6 +2078,7 @@ function PageRenderer(props: PageRendererProps) {
     showProfilePassword,
     taskDraft,
     tasks,
+    taskScopes,
     tenantDraft,
     tenantPage,
     tenantPageCount,
@@ -2233,25 +2426,62 @@ function PageRenderer(props: PageRendererProps) {
         <article className="panel wide-panel">
           <div className="panel-header">
             <div>
-              <p className="panel-kicker">Live Tasks</p>
+              <p className="panel-kicker">Tasks</p>
               <h3>Operational queue</h3>
             </div>
           </div>
           <div className="thread-list">
-            {tasks.length > 0 ? (
-              tasks.map((task) => (
-                <div className="thread-card" key={task.id}>
-                  <div className="thread-topline">
-                    <strong>{task.title}</strong>
-                    <span className="badge neutral">{task.status || "open"}</span>
-                  </div>
-                  <p>{task.department || "No department"} • {task.priority || "No priority"}</p>
-                  <small>{task.assignedToName || "Unassigned"} • SLA {formatDate(task.slaDueAt)}</small>
-                </div>
-              ))
-            ) : (
-              <div className="empty-row">No tasks created yet.</div>
-            )}
+            {taskScopes.canSeeMy ? (
+              <TaskSection
+                title="My Tasks"
+                tasks={taskScopes.myTasks}
+                onOpenTask={(task) => {
+                  setTaskDetailId(task.id);
+                  setTaskManageDraft({
+                    status: task.status || "open",
+                    assignedToId: task.assignedToId || "",
+                    priority: task.priority || "P2",
+                    slaDueAt: task.slaDueAt ? String(task.slaDueAt).slice(0, 16) : "",
+                    comment: "",
+                  });
+                }}
+              />
+            ) : null}
+            {taskScopes.canSeeDept ? (
+              <TaskSection
+                title="Dept Tasks"
+                tasks={taskScopes.deptTasks}
+                onOpenTask={(task) => {
+                  setTaskDetailId(task.id);
+                  setTaskManageDraft({
+                    status: task.status || "open",
+                    assignedToId: task.assignedToId || "",
+                    priority: task.priority || "P2",
+                    slaDueAt: task.slaDueAt ? String(task.slaDueAt).slice(0, 16) : "",
+                    comment: "",
+                  });
+                }}
+              />
+            ) : null}
+            {taskScopes.canSeeLive ? (
+              <TaskSection
+                title="Live Tasks"
+                tasks={taskScopes.liveTasks}
+                onOpenTask={(task) => {
+                  setTaskDetailId(task.id);
+                  setTaskManageDraft({
+                    status: task.status || "open",
+                    assignedToId: task.assignedToId || "",
+                    priority: task.priority || "P2",
+                    slaDueAt: task.slaDueAt ? String(task.slaDueAt).slice(0, 16) : "",
+                    comment: "",
+                  });
+                }}
+              />
+            ) : null}
+            {!taskScopes.canSeeMy && !taskScopes.canSeeDept && !taskScopes.canSeeLive ? (
+              <div className="empty-row">This user has not been given task visibility permissions yet.</div>
+            ) : null}
           </div>
         </article>
         <article className="panel form-panel">
@@ -2611,7 +2841,7 @@ function PageRenderer(props: PageRendererProps) {
                         }
                         type="checkbox"
                       />
-                      <span>{toTitle(permission)}</span>
+                      <span>{getPermissionLabel(permission)}</span>
                     </label>
                   ))}
                 </div>
@@ -2638,7 +2868,7 @@ function PageRenderer(props: PageRendererProps) {
                     <span className={`badge ${invite.acceptedAt ? "good" : "warn"}`}>{invite.role}</span>
                   </div>
                   <p>{invite.email}</p>
-                  <small>{invite.acceptedAt ? "Accepted" : "Awaiting acceptance"} • {invite.permissions.join(", ")}</small>
+                <small>{invite.acceptedAt ? "Accepted" : "Awaiting acceptance"} • {invite.permissions.map(getPermissionLabel).join(", ")}</small>
                 </div>
               ))
             ) : (
@@ -2668,7 +2898,7 @@ function PageRenderer(props: PageRendererProps) {
                   <span className="badge neutral">{toTitle(profile.role)}</span>
                 </div>
                 <p>{profile.email}</p>
-                <small>{profile.permissions.join(", ") || "No explicit permissions"}</small>
+                <small>{profile.permissions.map(getPermissionLabel).join(", ") || "No explicit permissions"}</small>
               </button>
             ))}
           </div>
@@ -2713,7 +2943,7 @@ function PageRenderer(props: PageRendererProps) {
                       }
                       type="checkbox"
                     />
-                    <span>{toTitle(permission)}</span>
+                    <span>{getPermissionLabel(permission)}</span>
                   </label>
                 ))}
               </div>
@@ -2833,6 +3063,38 @@ function MetricCard({ label, value, note }: { label: string; value: string; note
       <strong>{value}</strong>
       <small>{note}</small>
     </article>
+  );
+}
+
+function TaskSection({
+  title,
+  tasks,
+  onOpenTask,
+}: {
+  title: string;
+  tasks: TaskRecord[];
+  onOpenTask: (task: TaskRecord) => void;
+}) {
+  return (
+    <div className="thread-card">
+      <strong>{title}</strong>
+      <div className="thread-list top-gap">
+        {tasks.length > 0 ? (
+          tasks.map((task) => (
+            <button className="thread-card interactive-row" key={task.id} onClick={() => onOpenTask(task)} type="button">
+              <div className="thread-topline">
+                <strong>{task.title}</strong>
+                <span className="badge neutral">{task.status || "open"}</span>
+              </div>
+              <p>{task.department || "No department"} • {task.priority || "No priority"}</p>
+              <small>{task.assignedToName || "Unassigned"} • SLA {formatDate(task.slaDueAt)}</small>
+            </button>
+          ))
+        ) : (
+          <div className="empty-row">No tasks in this section.</div>
+        )}
+      </div>
+    </div>
   );
 }
 

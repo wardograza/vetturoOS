@@ -95,7 +95,34 @@ export async function createTaskRecord({ admin, actorId, body }) {
 
     const { error } = await admin.from("tasks").insert(sanitized);
     if (!error) {
+      const createdTask = await admin
+        .from("tasks")
+        .select("id")
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      const taskId = createdTask.data?.id || null;
+
+      if (taskId) {
+        await admin.from("task_events").insert({
+          task_id: taskId,
+          event_type: "created",
+          event_message: assignee
+            ? `Task created and assigned to ${assignee.full_name || "the selected user"}.`
+            : "Task created and left unassigned.",
+          created_by: actorId || null,
+          payload: {
+            department,
+            priority,
+            assignedToId: assignee?.id || null,
+            slaDueAt: normalizedSlaDueAt,
+          },
+        });
+      }
+
       return {
+        id: taskId,
         assignedToId: assignee?.id || null,
         assignedToName: assignee?.full_name || null,
         status: assignee ? "assigned" : "open",

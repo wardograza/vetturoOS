@@ -92,6 +92,16 @@ export interface TaskRecord {
   proofRequired: boolean;
   slaDueAt: string | null;
   createdAt: string | null;
+  eventLog: TaskEventRecord[];
+}
+
+export interface TaskEventRecord {
+  id: string;
+  eventType: string;
+  eventMessage: string;
+  createdBy: string | null;
+  createdAt: string | null;
+  payload: Record<string, unknown> | null;
 }
 
 export interface CommunicationRecord {
