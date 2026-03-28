@@ -96,6 +96,26 @@ function buildOnboardingGaps(organization, tenants) {
   return gaps;
 }
 
+async function fetchTasksForWorkspace() {
+  const variants = [
+    "id, title, description, department, priority, status, assigned_to, proof_required, sla_due_at, created_at",
+    "id, title, description, department, priority, status, assigned_to, sla_due_at, created_at",
+    "id, title, description, department, priority, status, assigned_to, created_at",
+    "id, title, department, priority, status, assigned_to, created_at",
+    "id, title, department, status, assigned_to",
+    "id, title, status",
+  ];
+
+  for (const select of variants) {
+    const result = await admin.from("tasks").select(select);
+    if (!result.error) {
+      return result;
+    }
+  }
+
+  return { data: [], error: null };
+}
+
 export default async function handler(req, res) {
   try {
     if (req.method === "POST") {
@@ -105,7 +125,6 @@ export default async function handler(req, res) {
           organizationResult,
           tenantProfilesResult,
           legacyTenantsResult,
-          tasksResult,
           communicationsResult,
           documentsResult,
           dnaResult,
@@ -116,7 +135,6 @@ export default async function handler(req, res) {
           admin.from("organization_profiles").select("id, organization_name, organization_code, org_website_url, primary_brand_color, secondary_brand_color, portfolio_size_count, standard_hours_open, standard_hours_close, onboarding_lead_name, onboarding_lead_email, source_payload").limit(1),
           admin.from("tenant_profiles").select("id, brand_name, unit_code, rent_amount, parent_company, category_primary, category_secondary, brand_grade, brand_poc_name, brand_poc_email, store_manager_name, store_manager_phone, billing_contact_email, nexus_leasing_lead, lease_start_date, lease_expiry_date, mg_rent_monthly, gto_percent, security_deposit, unit_gla_sba, power_load_kva, gas_connection_yn, water_inlet_yn, exhaust_provision_yn, insurance_expiry, trade_license_expiry, last_audit_score, source_payload"),
           admin.from("tenants").select("tenant_name, unit_number, rent"),
-          admin.from("tasks").select("id, title, description, department, priority, status, assigned_to, proof_required, sla_due_at, created_at"),
           admin.from("communications").select("id, recipient_name, recipient_email, recipient_phone, channel, purpose, subject, body_preview, current_status, escalation_level, requires_action, sla_due_at, created_at"),
           admin.from("documents").select("id, file_name, storage_path, document_type, domain_category, sub_category, purpose_summary, status, parser_summary, is_in_core_memory, conflict_count, uploaded_at, source_payload"),
           admin.from("decision_dna_scores").select("id, candidate_brand_name, category, category_synergy, technical_fit, financial_health, cannibalization_risk, total_score, recommendation, research_summary, target_unit, replacement_brand, demand_signals, sources"),
@@ -124,6 +142,8 @@ export default async function handler(req, res) {
           admin.from("user_invites").select("id, full_name, username, email, phone_number, role, permissions, expires_at, accepted_at"),
           admin.from("app_configs").select("id, alert_threshold_p1_minutes, alert_threshold_p2_minutes, alert_threshold_p3_minutes, data_refresh_minutes, auto_escalation_enabled, email_enabled, whatsapp_enabled, bot_approval_probe_enabled, updated_at"),
         ]);
+
+        const tasksResult = await fetchTasksForWorkspace();
 
         const organizationRow = organizationResult.data?.[0];
         const organization = organizationRow
