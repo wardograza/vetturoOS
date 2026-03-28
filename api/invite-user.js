@@ -75,6 +75,9 @@ export default async function handler(req, res) {
       phone_number: body.phoneNumber,
       role: body.role,
       permissions,
+      availability_status: "available",
+      timezone: "Asia/Kolkata",
+      theme_preference: "dualtone",
       must_reset_password: true,
       is_active: true,
     });

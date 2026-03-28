@@ -44,6 +44,26 @@ export default async function handler(req, res) {
       profileUpdates.phone_number = body.phoneNumber;
     }
 
+    if (typeof body.timezone === "string") {
+      profileUpdates.timezone = body.timezone;
+    }
+
+    if (typeof body.status === "string") {
+      profileUpdates.availability_status = body.status;
+    }
+
+    if (typeof body.theme === "string") {
+      profileUpdates.theme_preference = body.theme;
+    }
+
+    if (typeof body.ptoFrom === "string") {
+      profileUpdates.pto_from = body.ptoFrom || null;
+    }
+
+    if (typeof body.ptoTo === "string") {
+      profileUpdates.pto_to = body.ptoTo || null;
+    }
+
     if (typeof body.mustResetPassword === "boolean") {
       profileUpdates.must_reset_password = body.mustResetPassword;
     }

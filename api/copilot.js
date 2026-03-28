@@ -1,6 +1,7 @@
-import { admin, readJsonBody, sendJson } from "./_lib/supabase.js";
+import { admin, getUserFromBearerToken, readJsonBody, sendJson } from "./_lib/supabase.js";
 import { callOpenAI, classifyDocumentFallback } from "./_lib/openai.js";
 import { findMissingFields, organizationRequiredFields, tenantRequiredFields } from "./_lib/workbook.js";
+import { chooseTaskAssignee } from "./_lib/task-routing.js";
 
 function currency(value) {
   return new Intl.NumberFormat("en-IN", {
@@ -53,6 +54,7 @@ export default async function handler(req, res) {
     const body = await readJsonBody(req);
     const mode = body.mode || "chat";
     const message = String(body.message || "");
+    const user = await getUserFromBearerToken(req);
 
     if (mode === "classify_document") {
       try {
@@ -73,13 +75,14 @@ export default async function handler(req, res) {
       }
     }
 
-    const [tenantProfilesResult, legacyTenantsResult, organizationResult, taskResult, documentResult] =
+    const [tenantProfilesResult, legacyTenantsResult, organizationResult, taskResult, documentResult, profilesResult] =
       await Promise.all([
         admin.from("tenant_profiles").select("brand_name, unit_code, rent_amount, category_primary, source_payload").limit(500),
         admin.from("tenants").select("tenant_name, unit_number, rent").limit(500),
         admin.from("organization_profiles").select("organization_name, source_payload").limit(1).maybeSingle(),
-        admin.from("tasks").select("title, department, priority, status").limit(50),
+        admin.from("tasks").select("title, department, priority, status, assigned_to").limit(100),
         admin.from("documents").select("file_name, domain_category, sub_category, source_payload, status").limit(50),
+        admin.from("profiles").select("id, full_name, username, email, role, permissions, is_active, availability_status, pto_from, pto_to").limit(200),
       ]);
 
     const tenantProfiles = tenantProfilesResult.error ? [] : tenantProfilesResult.data ?? [];
@@ -87,6 +90,7 @@ export default async function handler(req, res) {
     const organization = organizationResult.error ? null : organizationResult.data;
     const tasks = taskResult.error ? [] : taskResult.data ?? [];
     const documents = documentResult.error ? [] : documentResult.data ?? [];
+    const profiles = profilesResult.error ? [] : profilesResult.data ?? [];
     const approvedFinanceDocument = documents.find(
       (document) =>
         document.status === "approved" &&
@@ -121,6 +125,80 @@ export default async function handler(req, res) {
             MG_Rent_Monthly: row.rent,
           },
         }));
+
+    try {
+      const intentReply = await callOpenAI({
+        system:
+          "You are Vetturo's mall-ops action router. Return strict JSON with keys intent, page, taskTitle, taskDescription, department, priority, assignee, answer. Intents: answer, navigate, create_task. Only choose create_task when the user is clearly asking to create, assign, escalate, route, or log work. Departments must be one of facilities, finance, leasing, operations. Priorities must be one of P1, P2, P3.",
+        input: JSON.stringify({
+          userMessage: message,
+          visiblePages: ["Overview", "Tenants", "Tasks", "Communications", "Document Vault", "Leasing Intel", "Approvals", "Invite User", "Configs"],
+        }),
+        responseFormat: "json",
+      });
+
+      const intent = JSON.parse(intentReply);
+
+      if (intent.intent === "create_task") {
+        const taskTitle = String(intent.taskTitle || "").trim();
+        const department = String(intent.department || "").trim().toLowerCase();
+        const priority = String(intent.priority || "P2").trim().toUpperCase();
+
+        if (!taskTitle || !department) {
+          return sendJson(res, 200, {
+            reply: "I can create that task, but I still need a clear title and the department it should go to.",
+            action: { page: "Tasks" },
+          });
+        }
+
+        const assigneeHint = String(intent.assignee || "").trim().toLowerCase();
+        const matchedAssignee =
+          assigneeHint
+            ? profiles.find((profile) =>
+                [profile.full_name, profile.username, profile.email]
+                  .filter(Boolean)
+                  .some((value) => String(value).toLowerCase().includes(assigneeHint)),
+              ) ?? null
+            : null;
+
+        const assignee = chooseTaskAssignee({
+          requestedAssigneeId: matchedAssignee?.id || null,
+          profiles,
+          tasks,
+          department,
+        });
+
+        const { error: createError } = await admin.from("tasks").insert({
+          title: taskTitle,
+          description: String(intent.taskDescription || message).trim(),
+          department,
+          priority,
+          status: assignee ? "assigned" : "open",
+          assigned_to: assignee?.id || null,
+          created_by: user?.id || null,
+        });
+
+        if (createError) {
+          throw createError;
+        }
+
+        return sendJson(res, 200, {
+          reply: assignee
+            ? `I created "${taskTitle}" and assigned it to ${assignee.full_name || "the selected teammate"}.`
+            : `I created "${taskTitle}" and left it open because no eligible assignee was available right now.`,
+          action: { page: "Tasks" },
+        });
+      }
+
+      if (intent.intent === "navigate" && intent.page) {
+        return sendJson(res, 200, {
+          reply: intent.answer || `Opening ${intent.page}.`,
+          action: { page: intent.page },
+        });
+      }
+    } catch (_intentError) {
+      // If the routing model fails, continue into deterministic and QA flows.
+    }
 
     if (normalized.includes("missing") || normalized.includes("onboarding")) {
       const tenantGaps = rows
@@ -264,7 +342,7 @@ export default async function handler(req, res) {
     } catch (_error) {
       return sendJson(res, 200, {
         reply:
-          "I can still help using the structured data currently available in the workspace. For this question, I either need more approved onboarding data or a configured AI provider with active credits.",
+          "I can help with the structured data already in the workspace, but for this question I still need richer approved onboarding data or a clearer instruction to act on.",
       });
     }
   } catch (error) {

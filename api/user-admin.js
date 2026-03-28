@@ -51,6 +51,9 @@ export default async function handler(req, res) {
           phone_number: body.phoneNumber,
           role: body.role,
           permissions: Array.isArray(body.permissions) ? body.permissions : [],
+          availability_status: body.status || "available",
+          pto_from: body.ptoFrom || null,
+          pto_to: body.ptoTo || null,
         })
         .eq("id", body.userId);
 

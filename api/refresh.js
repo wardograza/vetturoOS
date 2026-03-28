@@ -116,7 +116,7 @@ export default async function handler(req, res) {
           admin.from("organization_profiles").select("id, organization_name, organization_code, org_website_url, primary_brand_color, secondary_brand_color, portfolio_size_count, standard_hours_open, standard_hours_close, onboarding_lead_name, onboarding_lead_email, source_payload").limit(1),
           admin.from("tenant_profiles").select("id, brand_name, unit_code, rent_amount, parent_company, category_primary, category_secondary, brand_grade, brand_poc_name, brand_poc_email, store_manager_name, store_manager_phone, billing_contact_email, nexus_leasing_lead, lease_start_date, lease_expiry_date, mg_rent_monthly, gto_percent, security_deposit, unit_gla_sba, power_load_kva, gas_connection_yn, water_inlet_yn, exhaust_provision_yn, insurance_expiry, trade_license_expiry, last_audit_score, source_payload"),
           admin.from("tenants").select("tenant_name, unit_number, rent"),
-          admin.from("tasks").select("id, title, description, department, priority, status, assigned_to, proof_required, sla_due_at, created_at, assigned_to_profile:profiles!tasks_assigned_to_fkey(full_name)"),
+          admin.from("tasks").select("id, title, description, department, priority, status, assigned_to, proof_required, sla_due_at, created_at"),
           admin.from("communications").select("id, recipient_name, recipient_email, recipient_phone, channel, purpose, subject, body_preview, current_status, escalation_level, requires_action, sla_due_at, created_at"),
           admin.from("documents").select("id, file_name, storage_path, document_type, domain_category, sub_category, purpose_summary, status, parser_summary, is_in_core_memory, conflict_count, uploaded_at, source_payload"),
           admin.from("decision_dna_scores").select("id, candidate_brand_name, category, category_synergy, technical_fit, financial_health, cannibalization_risk, total_score, recommendation"),
@@ -152,6 +152,24 @@ export default async function handler(req, res) {
           (configResult.data || []).find((row) => String(row.id) === "00000000-0000-0000-0000-000000000001") ||
           configResult.data?.[0];
 
+        const profiles = (profilesResult.data || []).map((row) => ({
+          id: String(row.id),
+          email: String(row.email),
+          fullName: String(row.full_name),
+          username: row.username ?? null,
+          role: String(row.role),
+          phoneNumber: row.phone_number ?? null,
+          permissions: Array.isArray(row.permissions) ? row.permissions : [],
+          availabilityStatus: row.availability_status ?? null,
+          ptoFrom: row.pto_from ?? null,
+          ptoTo: row.pto_to ?? null,
+          timezone: row.timezone ?? null,
+          themePreference: row.theme_preference ?? null,
+          mustResetPassword: Boolean(row.must_reset_password),
+          isActive: Boolean(row.is_active),
+        }));
+        const profileNameById = new Map(profiles.map((profile) => [profile.id, profile.fullName]));
+
         return sendJson(res, 200, {
           organization,
           tenants,
@@ -163,7 +181,7 @@ export default async function handler(req, res) {
             priority: row.priority ?? null,
             status: row.status ?? null,
             assignedToId: row.assigned_to ?? null,
-            assignedToName: row.assigned_to_profile?.full_name ?? null,
+            assignedToName: profileNameById.get(String(row.assigned_to ?? "")) ?? null,
             proofRequired: Boolean(row.proof_required),
             slaDueAt: row.sla_due_at ?? null,
             createdAt: row.created_at ?? null,
@@ -209,17 +227,7 @@ export default async function handler(req, res) {
             totalScore: toNumber(row.total_score) ?? 0,
             recommendation: String(row.recommendation),
           })),
-          profiles: (profilesResult.data || []).map((row) => ({
-            id: String(row.id),
-            email: String(row.email),
-            fullName: String(row.full_name),
-            username: row.username ?? null,
-            role: String(row.role),
-            phoneNumber: row.phone_number ?? null,
-            permissions: Array.isArray(row.permissions) ? row.permissions : [],
-            mustResetPassword: Boolean(row.must_reset_password),
-            isActive: Boolean(row.is_active),
-          })),
+          profiles,
           invites: (invitesResult.data || []).map((row) => ({
             id: String(row.id),
             fullName: String(row.full_name ?? ""),

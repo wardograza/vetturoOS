@@ -303,6 +303,14 @@ function humanizeErrorMessage(message: string) {
     return "One of the values entered is not in the expected format.";
   }
 
+  if (normalized.includes("pto")) {
+    return message;
+  }
+
+  if (normalized.includes("could not be found")) {
+    return message;
+  }
+
   return message;
 }
 
@@ -631,11 +639,21 @@ function App() {
         username: signedInProfile?.username ?? "",
         phoneNumber: signedInProfile?.phoneNumber ?? "",
         email: session?.user?.email ?? "",
-        timezone: typeof session?.user?.user_metadata?.timezone === "string" ? session.user.user_metadata.timezone : current.timezone,
-        status: typeof session?.user?.user_metadata?.status === "string" ? session.user.user_metadata.status : current.status,
-        theme: typeof session?.user?.user_metadata?.theme === "string" ? session.user.user_metadata.theme : current.theme,
-        ptoFrom: typeof session?.user?.user_metadata?.ptoFrom === "string" ? session.user.user_metadata.ptoFrom : current.ptoFrom,
-        ptoTo: typeof session?.user?.user_metadata?.ptoTo === "string" ? session.user.user_metadata.ptoTo : current.ptoTo,
+        timezone:
+          signedInProfile?.timezone ??
+          (typeof session?.user?.user_metadata?.timezone === "string" ? session.user.user_metadata.timezone : current.timezone),
+        status:
+          signedInProfile?.availabilityStatus ??
+          (typeof session?.user?.user_metadata?.status === "string" ? session.user.user_metadata.status : current.status),
+        theme:
+          signedInProfile?.themePreference ??
+          (typeof session?.user?.user_metadata?.theme === "string" ? session.user.user_metadata.theme : current.theme),
+        ptoFrom:
+          signedInProfile?.ptoFrom ??
+          (typeof session?.user?.user_metadata?.ptoFrom === "string" ? session.user.user_metadata.ptoFrom : current.ptoFrom),
+        ptoTo:
+          signedInProfile?.ptoTo ??
+          (typeof session?.user?.user_metadata?.ptoTo === "string" ? session.user.user_metadata.ptoTo : current.ptoTo),
       }));
     } catch (error) {
       setWorkspaceError(error instanceof Error ? error.message : "Failed to load workspace.");
@@ -978,6 +996,11 @@ function App() {
         fullName: profileDraft.fullName,
         username: profileDraft.username,
         phoneNumber: profileDraft.phoneNumber,
+        timezone: profileDraft.timezone,
+        status: profileDraft.status,
+        theme: profileDraft.theme,
+        ptoFrom: profileDraft.ptoFrom,
+        ptoTo: profileDraft.ptoTo,
       });
 
       const metadataPayload = {
@@ -1095,9 +1118,9 @@ function App() {
     setSavingState("task");
 
     try {
-      await callApi("/api/tasks", taskDraft);
+      const result = await callApi<{ message?: string }>("/api/tasks", taskDraft);
       setTaskDraft(defaultTaskDraft);
-      pushBot("assistant", "Task created and routed into the operational queue.");
+      pushBot("assistant", result.message || "Task created and routed into the operational queue.");
       await loadWorkspace();
     } catch (error) {
       setWorkspaceError(
@@ -2199,7 +2222,16 @@ function PageRenderer(props: PageRendererProps) {
               <select value={taskDraft.assignedToId} onChange={(event) => setTaskDraft((draft) => ({ ...draft, assignedToId: event.target.value }))}>
                 <option value="">Unassigned</option>
                 {profiles.map((profile) => (
-                  <option key={profile.id} value={profile.id}>{profile.fullName}</option>
+                  <option
+                    disabled={String(profile.availabilityStatus || "").toLowerCase() === "pto"}
+                    key={profile.id}
+                    value={profile.id}
+                  >
+                    {profile.fullName}
+                    {String(profile.availabilityStatus || "").toLowerCase() === "pto"
+                      ? ` (PTO ${profile.ptoFrom ? formatDate(profile.ptoFrom) : ""}${profile.ptoTo ? ` to ${formatDate(profile.ptoTo)}` : ""})`
+                      : ""}
+                  </option>
                 ))}
               </select>
             </label>

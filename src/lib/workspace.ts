@@ -188,15 +188,6 @@ async function fetchTenantProfiles(): Promise<{ data: TenantProfile[]; warning?:
 }
 
 async function fetchTasks(): Promise<{ data: Record<string, unknown>[]; warning?: string }> {
-  const enriched = await safeSelect<Record<string, unknown>>(
-    "tasks",
-    "id, title, description, department, priority, status, assigned_to, proof_required, sla_due_at, created_at, assigned_to_profile:profiles!tasks_assigned_to_fkey(full_name)",
-  );
-
-  if (enriched.data.length > 0 || !enriched.warning) {
-    return enriched;
-  }
-
   return safeSelect<Record<string, unknown>>(
     "tasks",
     "id, title, description, department, priority, status, assigned_to, proof_required, sla_due_at, created_at",
@@ -333,21 +324,6 @@ export async function fetchWorkspaceData(accessToken?: string): Promise<Workspac
 
   const organization = organizationResult.data[0] ? mapOrganizationProfile(organizationResult.data[0]) : null;
 
-  const tasks: TaskRecord[] = tasksResult.data.map((row) => ({
-    id: String(row.id),
-    title: String(row.title),
-    description: (row.description as string | null) ?? null,
-    department: (row.department as string | null) ?? null,
-    priority: (row.priority as string | null) ?? null,
-    status: (row.status as string | null) ?? null,
-    assignedToId: (row.assigned_to as string | null) ?? null,
-    assignedToName:
-      (row.assigned_to_profile as { full_name?: string } | null)?.full_name ?? null,
-    proofRequired: Boolean(row.proof_required),
-    slaDueAt: (row.sla_due_at as string | null) ?? null,
-    createdAt: (row.created_at as string | null) ?? null,
-  }));
-
   const communications: CommunicationRecord[] = communicationsResult.data.map((row) => ({
     id: String(row.id),
     recipientName: String(row.recipient_name),
@@ -400,8 +376,29 @@ export async function fetchWorkspaceData(accessToken?: string): Promise<Workspac
     role: String(row.role),
     phoneNumber: (row.phone_number as string | null) ?? null,
     permissions: Array.isArray(row.permissions) ? (row.permissions as string[]) : [],
+    availabilityStatus: (row.availability_status as string | null) ?? null,
+    ptoFrom: (row.pto_from as string | null) ?? null,
+    ptoTo: (row.pto_to as string | null) ?? null,
+    timezone: (row.timezone as string | null) ?? null,
+    themePreference: (row.theme_preference as string | null) ?? null,
     mustResetPassword: Boolean(row.must_reset_password),
     isActive: Boolean(row.is_active),
+  }));
+
+  const profileNameById = new Map(profiles.map((profile) => [profile.id, profile.fullName]));
+
+  const tasks: TaskRecord[] = tasksResult.data.map((row) => ({
+    id: String(row.id),
+    title: String(row.title),
+    description: (row.description as string | null) ?? null,
+    department: (row.department as string | null) ?? null,
+    priority: (row.priority as string | null) ?? null,
+    status: (row.status as string | null) ?? null,
+    assignedToId: (row.assigned_to as string | null) ?? null,
+    assignedToName: profileNameById.get(String(row.assigned_to ?? "")) ?? null,
+    proofRequired: Boolean(row.proof_required),
+    slaDueAt: (row.sla_due_at as string | null) ?? null,
+    createdAt: (row.created_at as string | null) ?? null,
   }));
 
   const invites: InviteRecord[] = invitesResult.data.map((row) => ({

@@ -6,6 +6,11 @@ begin
     alter table public.profiles
       add column if not exists username text,
       add column if not exists phone_number text,
+      add column if not exists availability_status text not null default 'available',
+      add column if not exists pto_from date,
+      add column if not exists pto_to date,
+      add column if not exists timezone text,
+      add column if not exists theme_preference text,
       add column if not exists permissions text[] not null default '{}';
 
     if exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'profiles' and column_name = 'mall_id') then

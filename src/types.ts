@@ -19,6 +19,11 @@ export interface AuthProfile {
   role: string;
   phoneNumber: string | null;
   permissions: string[];
+  availabilityStatus: string | null;
+  ptoFrom: string | null;
+  ptoTo: string | null;
+  timezone: string | null;
+  themePreference: string | null;
   mustResetPassword: boolean;
   isActive: boolean;
 }
