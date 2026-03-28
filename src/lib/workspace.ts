@@ -416,6 +416,7 @@ export async function fetchWorkspaceData(accessToken?: string): Promise<Workspac
     eventType: string;
     eventMessage: string;
     createdBy: string | null;
+    createdByName: string | null;
     createdAt: string | null;
     payload: Record<string, unknown> | null;
   }[]>();
@@ -432,6 +433,7 @@ export async function fetchWorkspaceData(accessToken?: string): Promise<Workspac
       eventType: String(row.event_type ?? "event"),
       eventMessage: String(row.event_message ?? ""),
       createdBy: (row.created_by as string | null) ?? null,
+      createdByName: profileNameById.get(String(row.created_by ?? "")) ?? null,
       createdAt: (row.created_at as string | null) ?? null,
       payload: (row.payload as Record<string, unknown> | null) ?? null,
     });

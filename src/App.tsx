@@ -50,7 +50,6 @@ interface TaskManageDraft {
 interface TaskFilters {
   status: string;
   assigneeId: string;
-  scope: string;
   department: string;
 }
 
@@ -235,7 +234,6 @@ const defaultTaskManageDraft: TaskManageDraft = {
 const defaultTaskFilters: TaskFilters = {
   status: "all",
   assigneeId: "all",
-  scope: "all",
   department: "all",
 };
 
@@ -281,6 +279,24 @@ function formatDate(value: string | null) {
     month: "short",
     year: "numeric",
   });
+}
+
+function toDateTimeLocalValue(value: string | null) {
+  if (!value) {
+    return "";
+  }
+
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return "";
+  }
+
+  const year = parsed.getFullYear();
+  const month = String(parsed.getMonth() + 1).padStart(2, "0");
+  const day = String(parsed.getDate()).padStart(2, "0");
+  const hours = String(parsed.getHours()).padStart(2, "0");
+  const minutes = String(parsed.getMinutes()).padStart(2, "0");
+  return `${year}-${month}-${day}T${hours}:${minutes}`;
 }
 
 function toTitle(value: string) {
@@ -647,14 +663,7 @@ function App() {
   const [workspace, setWorkspace] = useState<WorkspaceData | null>(null);
   const [workspaceLoading, setWorkspaceLoading] = useState(true);
   const [workspaceError, setWorkspaceError] = useState<string | null>(null);
-  const [activePage, setActivePage] = useState<NavPage>(() => {
-    if (typeof window === "undefined") {
-      return "Overview";
-    }
-
-    const stored = window.localStorage.getItem("vetturo_active_page");
-    return (stored as NavPage) || "Overview";
-  });
+  const [activePage, setActivePage] = useState<NavPage>("Overview");
   const [isBotOpen, setIsBotOpen] = useState(false);
   const [isNavCollapsed, setIsNavCollapsed] = useState(false);
   const [botMessages, setBotMessages] = useState<BotMessage[]>(initialBotMessages);
@@ -694,6 +703,7 @@ function App() {
   const [taskDetailId, setTaskDetailId] = useState<string | null>(null);
   const [taskManageDraft, setTaskManageDraft] = useState<TaskManageDraft>(defaultTaskManageDraft);
   const [taskFilters, setTaskFilters] = useState<TaskFilters>(defaultTaskFilters);
+  const [taskSectionState, setTaskSectionState] = useState({ my: true, dept: true, live: true });
 
   useEffect(() => {
     if (!supabase) {
@@ -762,9 +772,20 @@ function App() {
   useEffect(() => {
     if (!session) {
       setWorkspace(null);
+      setActivePage("Overview");
+      setTaskFilters(defaultTaskFilters);
+      setTaskSectionState({ my: true, dept: true, live: true });
       return;
     }
 
+    if (typeof window !== "undefined") {
+      const stored = window.sessionStorage.getItem(`vetturo_active_page:${session.user.id}`);
+      setActivePage((stored as NavPage) || "Overview");
+    } else {
+      setActivePage("Overview");
+    }
+    setTaskFilters(defaultTaskFilters);
+    setTaskSectionState({ my: true, dept: true, live: true });
     void loadWorkspace();
   }, [session]);
 
@@ -809,10 +830,10 @@ function App() {
   }, [activePage, visibleNavItems, workspace, workspaceLoading]);
 
   useEffect(() => {
-    if (typeof window !== "undefined") {
-      window.localStorage.setItem("vetturo_active_page", activePage);
+    if (typeof window !== "undefined" && session?.user?.id) {
+      window.sessionStorage.setItem(`vetturo_active_page:${session.user.id}`, activePage);
     }
-  }, [activePage]);
+  }, [activePage, session?.user?.id]);
 
   const tenants = workspace?.tenants ?? [];
   const tasks = workspace?.tasks ?? [];
@@ -978,16 +999,13 @@ function App() {
       return true;
     };
 
-    const shouldShowScope = (scopeName: "my" | "dept" | "live") =>
-      taskFilters.scope === "all" || taskFilters.scope === scopeName;
-
     return {
       myTasks: visibleTaskRecords.myTasks.filter((task) => matchesTask(task, "my")),
       deptTasks: visibleTaskRecords.deptTasks.filter((task) => matchesTask(task, "dept")),
       liveTasks: visibleTaskRecords.liveTasks.filter((task) => matchesTask(task, "live")),
-      canSeeMy: visibleTaskRecords.canSeeMy && shouldShowScope("my"),
-      canSeeDept: visibleTaskRecords.canSeeDept && shouldShowScope("dept"),
-      canSeeLive: visibleTaskRecords.canSeeLive && shouldShowScope("live"),
+      canSeeMy: visibleTaskRecords.canSeeMy,
+      canSeeDept: visibleTaskRecords.canSeeDept,
+      canSeeLive: visibleTaskRecords.canSeeLive,
     };
   }, [taskFilters, visibleTaskRecords]);
 
@@ -1125,10 +1143,16 @@ function App() {
       return;
     }
 
+    if (typeof window !== "undefined" && session?.user?.id) {
+      window.sessionStorage.removeItem(`vetturo_active_page:${session.user.id}`);
+    }
     await supabase.auth.signOut();
     setBotMessages(initialBotMessages);
     setActivePage("Overview");
-    window.localStorage.removeItem("vetturo_active_page");
+    setTaskFilters(defaultTaskFilters);
+    setTaskSectionState({ my: true, dept: true, live: true });
+    setIsBotOpen(false);
+    setHasUnreadBot(false);
   }
 
   async function handlePasswordReset() {
@@ -1730,6 +1754,7 @@ function App() {
             setTaskDetailId={setTaskDetailId}
             setTaskFilters={setTaskFilters}
             setTaskManageDraft={setTaskManageDraft}
+            setTaskSectionState={setTaskSectionState}
             setTenantDraft={setTenantDraft}
             setSelectedTenantId={setSelectedTenantId}
             setTenantDetailState={setTenantDetailState}
@@ -1742,6 +1767,7 @@ function App() {
             showProfilePassword={showProfilePassword}
             taskDraft={taskDraft}
             taskFilters={taskFilters}
+            taskSectionState={taskSectionState}
             tasks={tasks}
             taskScopeAccess={visibleTaskRecords}
             taskScopes={filteredTaskScopes}
@@ -2003,7 +2029,9 @@ function App() {
                   <div className="thread-card" key={event.id}>
                     <strong>{toTitle(event.eventType)}</strong>
                     <p>{event.eventMessage}</p>
-                    <small>{formatDate(event.createdAt)}</small>
+                    <small>
+                      {event.createdByName || event.createdBy || "System"} • {formatDate(event.createdAt)}
+                    </small>
                   </div>
                 ))
               ) : (
@@ -2053,6 +2081,7 @@ interface PageRendererProps {
   setTaskDetailId: React.Dispatch<React.SetStateAction<string | null>>;
   setTaskFilters: React.Dispatch<React.SetStateAction<TaskFilters>>;
   setTaskManageDraft: React.Dispatch<React.SetStateAction<TaskManageDraft>>;
+  setTaskSectionState: React.Dispatch<React.SetStateAction<{ my: boolean; dept: boolean; live: boolean }>>;
   setTenantPage: React.Dispatch<React.SetStateAction<number>>;
   setTenantPageSize: React.Dispatch<React.SetStateAction<number>>;
   setTenantDraft: React.Dispatch<React.SetStateAction<TenantDraft>>;
@@ -2063,6 +2092,7 @@ interface PageRendererProps {
   showProfilePassword: boolean;
   taskDraft: TaskDraft;
   taskFilters: TaskFilters;
+  taskSectionState: { my: boolean; dept: boolean; live: boolean };
   tasks: TaskRecord[];
   taskScopes: {
     myTasks: TaskRecord[];
@@ -2133,6 +2163,7 @@ function PageRenderer(props: PageRendererProps) {
     setTaskDetailId,
     setTaskFilters,
     setTaskManageDraft,
+    setTaskSectionState,
     setTenantPage,
     setTenantPageSize,
     setTenantDraft,
@@ -2143,6 +2174,7 @@ function PageRenderer(props: PageRendererProps) {
     showProfilePassword,
     taskDraft,
     taskFilters,
+    taskSectionState,
     tasks,
     taskScopeAccess,
     taskScopes,
@@ -2492,12 +2524,6 @@ function PageRenderer(props: PageRendererProps) {
       .filter((profile) => String(profile.availabilityStatus || "").toLowerCase() !== "pto")
       .map((profile) => ({ id: profile.id, label: profile.fullName }));
 
-    const availableTaskScopeOptions = [
-      taskScopeAccess.canSeeMy ? { value: "my", label: "My Tasks" } : null,
-      taskScopeAccess.canSeeDept ? { value: "dept", label: "Dept Tasks" } : null,
-      taskScopeAccess.canSeeLive ? { value: "live", label: "Live Tasks" } : null,
-    ].filter(Boolean) as Array<{ value: string; label: string }>;
-
     return (
       <section className="content-grid balanced">
         <article className="panel wide-panel">
@@ -2508,15 +2534,6 @@ function PageRenderer(props: PageRendererProps) {
             </div>
           </div>
           <div className="field-row task-filter-row">
-            <label className="field">
-              <span>View</span>
-              <select value={taskFilters.scope} onChange={(event) => setTaskFilters((draft) => ({ ...draft, scope: event.target.value }))}>
-                <option value="all">All visible queues</option>
-                {availableTaskScopeOptions.map((option) => (
-                  <option key={option.value} value={option.value}>{option.label}</option>
-                ))}
-              </select>
-            </label>
             <label className="field">
               <span>Status</span>
               <select value={taskFilters.status} onChange={(event) => setTaskFilters((draft) => ({ ...draft, status: event.target.value }))}>
@@ -2550,6 +2567,8 @@ function PageRenderer(props: PageRendererProps) {
             {taskScopes.canSeeMy ? (
               <TaskSection
                 title="My Tasks"
+                isOpen={taskSectionState.my}
+                onToggle={() => setTaskSectionState((draft) => ({ ...draft, my: !draft.my }))}
                 tasks={taskScopes.myTasks}
                 onOpenTask={(task) => {
                   setTaskDetailId(task.id);
@@ -2557,7 +2576,7 @@ function PageRenderer(props: PageRendererProps) {
                     status: task.status || "open",
                     assignedToId: task.assignedToId || "",
                     priority: task.priority || "P2",
-                    slaDueAt: task.slaDueAt ? String(task.slaDueAt).slice(0, 16) : "",
+                    slaDueAt: toDateTimeLocalValue(task.slaDueAt),
                     comment: "",
                   });
                 }}
@@ -2566,6 +2585,8 @@ function PageRenderer(props: PageRendererProps) {
             {taskScopes.canSeeDept ? (
               <TaskSection
                 title="Dept Tasks"
+                isOpen={taskSectionState.dept}
+                onToggle={() => setTaskSectionState((draft) => ({ ...draft, dept: !draft.dept }))}
                 tasks={taskScopes.deptTasks}
                 onOpenTask={(task) => {
                   setTaskDetailId(task.id);
@@ -2573,7 +2594,7 @@ function PageRenderer(props: PageRendererProps) {
                     status: task.status || "open",
                     assignedToId: task.assignedToId || "",
                     priority: task.priority || "P2",
-                    slaDueAt: task.slaDueAt ? String(task.slaDueAt).slice(0, 16) : "",
+                    slaDueAt: toDateTimeLocalValue(task.slaDueAt),
                     comment: "",
                   });
                 }}
@@ -2582,6 +2603,8 @@ function PageRenderer(props: PageRendererProps) {
             {taskScopes.canSeeLive ? (
               <TaskSection
                 title="Live Tasks"
+                isOpen={taskSectionState.live}
+                onToggle={() => setTaskSectionState((draft) => ({ ...draft, live: !draft.live }))}
                 tasks={taskScopes.liveTasks}
                 onOpenTask={(task) => {
                   setTaskDetailId(task.id);
@@ -2589,7 +2612,7 @@ function PageRenderer(props: PageRendererProps) {
                     status: task.status || "open",
                     assignedToId: task.assignedToId || "",
                     priority: task.priority || "P2",
-                    slaDueAt: task.slaDueAt ? String(task.slaDueAt).slice(0, 16) : "",
+                    slaDueAt: toDateTimeLocalValue(task.slaDueAt),
                     comment: "",
                   });
                 }}
@@ -3184,32 +3207,43 @@ function MetricCard({ label, value, note }: { label: string; value: string; note
 
 function TaskSection({
   title,
+  isOpen,
+  onToggle,
   tasks,
   onOpenTask,
 }: {
   title: string;
+  isOpen: boolean;
+  onToggle: () => void;
   tasks: TaskRecord[];
   onOpenTask: (task: TaskRecord) => void;
 }) {
   return (
     <div className="thread-card">
-      <strong>{title}</strong>
-      <div className="thread-list top-gap">
-        {tasks.length > 0 ? (
-          tasks.map((task) => (
-            <button className="thread-card interactive-row" key={task.id} onClick={() => onOpenTask(task)} type="button">
-              <div className="thread-topline">
-                <strong>{task.title}</strong>
-                <span className="badge neutral">{task.status || "open"}</span>
-              </div>
-              <p>{task.department || "No department"} • {task.priority || "No priority"}</p>
-              <small>{task.assignedToName || "Unassigned"} • SLA {formatDate(task.slaDueAt)}</small>
-            </button>
-          ))
-        ) : (
-          <div className="empty-row">No tasks in this section.</div>
-        )}
-      </div>
+      <button className="section-toggle" onClick={onToggle} type="button">
+        <strong>
+          {title} ({tasks.length})
+        </strong>
+        <span className="badge neutral">{isOpen ? "Collapse" : "Expand"}</span>
+      </button>
+      {isOpen ? (
+        <div className="thread-list top-gap">
+          {tasks.length > 0 ? (
+            tasks.map((task) => (
+              <button className="thread-card interactive-row" key={task.id} onClick={() => onOpenTask(task)} type="button">
+                <div className="thread-topline">
+                  <strong>{task.title}</strong>
+                  <span className="badge neutral">{task.status || "open"}</span>
+                </div>
+                <p>{task.department || "No department"} • {task.priority || "No priority"}</p>
+                <small>{task.assignedToName || "Unassigned"} • SLA {formatDate(task.slaDueAt)}</small>
+              </button>
+            ))
+          ) : (
+            <div className="empty-row">No tasks in this section.</div>
+          )}
+        </div>
+      ) : null}
     </div>
   );
 }

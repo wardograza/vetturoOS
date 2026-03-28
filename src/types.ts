@@ -100,6 +100,7 @@ export interface TaskEventRecord {
   eventType: string;
   eventMessage: string;
   createdBy: string | null;
+  createdByName: string | null;
   createdAt: string | null;
   payload: Record<string, unknown> | null;
 }

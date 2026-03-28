@@ -224,6 +224,11 @@ export default async function handler(req, res) {
           isActive: Boolean(row.is_active),
         }));
         const profileNameById = new Map(profiles.map((profile) => [profile.id, profile.fullName]));
+        eventsByTaskId.forEach((events) => {
+          events.forEach((event) => {
+            event.createdByName = profileNameById.get(String(event.createdBy ?? "")) ?? null;
+          });
+        });
 
         return sendJson(res, 200, {
           organization,
