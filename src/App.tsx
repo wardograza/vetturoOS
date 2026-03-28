@@ -2432,37 +2432,10 @@ function PageRenderer(props: PageRendererProps) {
               <span>Candidate Brand</span>
               <input value={leasingDraft.candidateBrandName} onChange={(event) => setLeasingDraft((draft) => ({ ...draft, candidateBrandName: event.target.value }))} />
             </label>
-            <div className="field-row">
-              <label className="field">
-                <span>Category</span>
-                <input value={leasingDraft.category} onChange={(event) => setLeasingDraft((draft) => ({ ...draft, category: event.target.value }))} />
-              </label>
-              <label className="field">
-                <span>Target Unit / Floor</span>
-                <input value={leasingDraft.targetUnit} onChange={(event) => setLeasingDraft((draft) => ({ ...draft, targetUnit: event.target.value }))} />
-              </label>
-            </div>
             <label className="field">
-              <span>Replacement Brand or Weak Tenant</span>
-              <input
-                placeholder="Optional: brand being considered for replacement"
-                value={leasingDraft.replacementBrand}
-                onChange={(event) => setLeasingDraft((draft) => ({ ...draft, replacementBrand: event.target.value }))}
-              />
-            </label>
-            <label className="field">
-              <span>Area / Catchment Context</span>
+              <span>Optional context for the copilot</span>
               <textarea
-                placeholder="Example: young office-goers, premium residential catchment, nightlife district, family-heavy weekends"
-                rows={3}
-                value={leasingDraft.areaContext}
-                onChange={(event) => setLeasingDraft((draft) => ({ ...draft, areaContext: event.target.value }))}
-              />
-            </label>
-            <label className="field">
-              <span>What should Vetturo answer?</span>
-              <textarea
-                placeholder="Example: Would Brand X outperform the current tenant in this unit? What is the likely footfall and revenue upside?"
+                placeholder="Optional: mention a weak tenant, unit, floor, catchment nuance, or any specific question. If you leave this blank, Vetturo will infer from mall data and the internet."
                 rows={4}
                 value={leasingDraft.specificQuestion}
                 onChange={(event) => setLeasingDraft((draft) => ({ ...draft, specificQuestion: event.target.value }))}
