@@ -1,6 +1,40 @@
 import { admin, getUserFromBearerToken, readJsonBody, sendJson } from "./_lib/supabase.js";
 import { createTaskRecord } from "./_lib/task-create.js";
 
+async function insertTaskEvent(payload) {
+  const { error } = await admin.from("task_events").insert(payload);
+  if (error) {
+    return false;
+  }
+
+  return true;
+}
+
+async function updateTaskRecord(taskId, updates) {
+  const variants = [
+    updates,
+    Object.fromEntries(Object.entries(updates).filter(([key]) => key !== "sla_due_at")),
+    Object.fromEntries(Object.entries(updates).filter(([key]) => key !== "priority")),
+    Object.fromEntries(
+      Object.entries(updates).filter(([key]) => key !== "priority" && key !== "sla_due_at"),
+    ),
+    Object.fromEntries(Object.entries(updates).filter(([key]) => key !== "assigned_to")),
+  ].filter((variant) => Object.keys(variant).length > 0);
+
+  let lastError = null;
+
+  for (const variant of variants) {
+    const { error } = await admin.from("tasks").update(variant).eq("id", taskId);
+    if (!error) {
+      return variant;
+    }
+
+    lastError = error;
+  }
+
+  throw lastError;
+}
+
 export default async function handler(req, res) {
   if (req.method !== "POST") {
     return sendJson(res, 405, { error: "Method not allowed." });
@@ -9,8 +43,9 @@ export default async function handler(req, res) {
   try {
     const user = await getUserFromBearerToken(req);
     const body = await readJsonBody(req);
+    const isUpdateAction = body.action === "update_task";
 
-     if (body.action === "update_task") {
+    if (isUpdateAction) {
       if (!body.taskId) {
         return sendJson(res, 400, { error: "Task id is required to update a task." });
       }
@@ -30,22 +65,18 @@ export default async function handler(req, res) {
       }
 
       if (Object.keys(updates).length > 0) {
-        const { error } = await admin.from("tasks").update(updates).eq("id", body.taskId);
-        if (error) {
-          throw error;
-        }
-
-        await admin.from("task_events").insert({
+        const appliedUpdates = await updateTaskRecord(body.taskId, updates);
+        await insertTaskEvent({
           task_id: body.taskId,
           event_type: "updated",
           event_message: "Task details updated.",
           created_by: user?.id || null,
-          payload: updates,
+          payload: appliedUpdates,
         });
       }
 
       if (typeof body.comment === "string" && body.comment.trim()) {
-        await admin.from("task_events").insert({
+        await insertTaskEvent({
           task_id: body.taskId,
           event_type: "comment",
           event_message: body.comment.trim(),
@@ -69,7 +100,10 @@ export default async function handler(req, res) {
     });
   } catch (error) {
     return sendJson(res, 500, {
-      error: error instanceof Error ? error.message : "Task creation failed.",
+      error:
+        error instanceof Error
+          ? error.message
+          : "Task request failed.",
     });
   }
 }

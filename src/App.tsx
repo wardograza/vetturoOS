@@ -47,6 +47,13 @@ interface TaskManageDraft {
   comment: string;
 }
 
+interface TaskFilters {
+  status: string;
+  assigneeId: string;
+  scope: string;
+  department: string;
+}
+
 interface InviteDraft {
   fullName: string;
   username: string;
@@ -223,6 +230,13 @@ const defaultTaskManageDraft: TaskManageDraft = {
   priority: "P2",
   slaDueAt: "",
   comment: "",
+};
+
+const defaultTaskFilters: TaskFilters = {
+  status: "all",
+  assigneeId: "all",
+  scope: "all",
+  department: "all",
 };
 
 const pagePermissions: Partial<Record<NavPage, string[]>> = {
@@ -679,6 +693,7 @@ function App() {
   const [managedUserDraft, setManagedUserDraft] = useState<ManagedUserDraft>(defaultManagedUserDraft);
   const [taskDetailId, setTaskDetailId] = useState<string | null>(null);
   const [taskManageDraft, setTaskManageDraft] = useState<TaskManageDraft>(defaultTaskManageDraft);
+  const [taskFilters, setTaskFilters] = useState<TaskFilters>(defaultTaskFilters);
 
   useEffect(() => {
     if (!supabase) {
@@ -941,6 +956,40 @@ function App() {
       canSeeLive: permissions.includes("task_scope_all") || role === "super_admin",
     };
   }, [currentProfile, tasks]);
+
+  const filteredTaskScopes = useMemo(() => {
+    const matchesTask = (task: TaskRecord, scopeName: "my" | "dept" | "live") => {
+      if (taskFilters.status !== "all" && (task.status || "open") !== taskFilters.status) {
+        return false;
+      }
+
+      if (taskFilters.assigneeId !== "all" && (task.assignedToId || "") !== taskFilters.assigneeId) {
+        return false;
+      }
+
+      if (
+        taskFilters.department !== "all" &&
+        scopeName !== "my" &&
+        (task.department || "").toLowerCase() !== taskFilters.department
+      ) {
+        return false;
+      }
+
+      return true;
+    };
+
+    const shouldShowScope = (scopeName: "my" | "dept" | "live") =>
+      taskFilters.scope === "all" || taskFilters.scope === scopeName;
+
+    return {
+      myTasks: visibleTaskRecords.myTasks.filter((task) => matchesTask(task, "my")),
+      deptTasks: visibleTaskRecords.deptTasks.filter((task) => matchesTask(task, "dept")),
+      liveTasks: visibleTaskRecords.liveTasks.filter((task) => matchesTask(task, "live")),
+      canSeeMy: visibleTaskRecords.canSeeMy && shouldShowScope("my"),
+      canSeeDept: visibleTaskRecords.canSeeDept && shouldShowScope("dept"),
+      canSeeLive: visibleTaskRecords.canSeeLive && shouldShowScope("live"),
+    };
+  }, [taskFilters, visibleTaskRecords]);
 
   const paginatedTenantResults = useMemo(() => {
     const start = (tenantPage - 1) * tenantPageSize;
@@ -1265,6 +1314,7 @@ function App() {
       return;
     }
 
+    setWorkspaceError(null);
     setSavingState("task-manage");
 
     try {
@@ -1282,7 +1332,11 @@ function App() {
       setTaskDetailId(null);
       await loadWorkspace();
     } catch (error) {
-      setWorkspaceError(error instanceof Error ? error.message : "Task update failed.");
+      setWorkspaceError(
+        error instanceof Error
+          ? `Task update failed. ${humanizeErrorMessage(error.message)}`
+          : "Task update failed. Please review the task details and try again.",
+      );
     } finally {
       setSavingState(null);
     }
@@ -1674,6 +1728,7 @@ function App() {
             setShowProfilePassword={setShowProfilePassword}
             setTaskDraft={setTaskDraft}
             setTaskDetailId={setTaskDetailId}
+            setTaskFilters={setTaskFilters}
             setTaskManageDraft={setTaskManageDraft}
             setTenantDraft={setTenantDraft}
             setSelectedTenantId={setSelectedTenantId}
@@ -1686,8 +1741,10 @@ function App() {
             showProfileConfirmPassword={showProfileConfirmPassword}
             showProfilePassword={showProfilePassword}
             taskDraft={taskDraft}
+            taskFilters={taskFilters}
             tasks={tasks}
-            taskScopes={visibleTaskRecords}
+            taskScopeAccess={visibleTaskRecords}
+            taskScopes={filteredTaskScopes}
             tenantDraft={tenantDraft}
             tenantPage={tenantPage}
             tenantPageSize={tenantPageSize}
@@ -1994,6 +2051,7 @@ interface PageRendererProps {
   setTenantDetailState: React.Dispatch<React.SetStateAction<TenantDetailState>>;
   setTaskDraft: React.Dispatch<React.SetStateAction<TaskDraft>>;
   setTaskDetailId: React.Dispatch<React.SetStateAction<string | null>>;
+  setTaskFilters: React.Dispatch<React.SetStateAction<TaskFilters>>;
   setTaskManageDraft: React.Dispatch<React.SetStateAction<TaskManageDraft>>;
   setTenantPage: React.Dispatch<React.SetStateAction<number>>;
   setTenantPageSize: React.Dispatch<React.SetStateAction<number>>;
@@ -2004,11 +2062,17 @@ interface PageRendererProps {
   showProfileConfirmPassword: boolean;
   showProfilePassword: boolean;
   taskDraft: TaskDraft;
+  taskFilters: TaskFilters;
   tasks: TaskRecord[];
   taskScopes: {
     myTasks: TaskRecord[];
     deptTasks: TaskRecord[];
     liveTasks: TaskRecord[];
+    canSeeMy: boolean;
+    canSeeDept: boolean;
+    canSeeLive: boolean;
+  };
+  taskScopeAccess: {
     canSeeMy: boolean;
     canSeeDept: boolean;
     canSeeLive: boolean;
@@ -2067,6 +2131,7 @@ function PageRenderer(props: PageRendererProps) {
     setTenantDetailState,
     setTaskDraft,
     setTaskDetailId,
+    setTaskFilters,
     setTaskManageDraft,
     setTenantPage,
     setTenantPageSize,
@@ -2077,7 +2142,9 @@ function PageRenderer(props: PageRendererProps) {
     showProfileConfirmPassword,
     showProfilePassword,
     taskDraft,
+    taskFilters,
     tasks,
+    taskScopeAccess,
     taskScopes,
     tenantDraft,
     tenantPage,
@@ -2421,6 +2488,16 @@ function PageRenderer(props: PageRendererProps) {
   }
 
   if (activePage === "Tasks") {
+    const taskAssigneeOptions = profiles
+      .filter((profile) => String(profile.availabilityStatus || "").toLowerCase() !== "pto")
+      .map((profile) => ({ id: profile.id, label: profile.fullName }));
+
+    const availableTaskScopeOptions = [
+      taskScopeAccess.canSeeMy ? { value: "my", label: "My Tasks" } : null,
+      taskScopeAccess.canSeeDept ? { value: "dept", label: "Dept Tasks" } : null,
+      taskScopeAccess.canSeeLive ? { value: "live", label: "Live Tasks" } : null,
+    ].filter(Boolean) as Array<{ value: string; label: string }>;
+
     return (
       <section className="content-grid balanced">
         <article className="panel wide-panel">
@@ -2429,6 +2506,45 @@ function PageRenderer(props: PageRendererProps) {
               <p className="panel-kicker">Tasks</p>
               <h3>Operational queue</h3>
             </div>
+          </div>
+          <div className="field-row task-filter-row">
+            <label className="field">
+              <span>View</span>
+              <select value={taskFilters.scope} onChange={(event) => setTaskFilters((draft) => ({ ...draft, scope: event.target.value }))}>
+                <option value="all">All visible queues</option>
+                {availableTaskScopeOptions.map((option) => (
+                  <option key={option.value} value={option.value}>{option.label}</option>
+                ))}
+              </select>
+            </label>
+            <label className="field">
+              <span>Status</span>
+              <select value={taskFilters.status} onChange={(event) => setTaskFilters((draft) => ({ ...draft, status: event.target.value }))}>
+                <option value="all">All statuses</option>
+                {["open", "assigned", "in_progress", "awaiting_approval", "closed", "reopened"].map((option) => (
+                  <option key={option} value={option}>{toTitle(option)}</option>
+                ))}
+              </select>
+            </label>
+            <label className="field">
+              <span>Assignee</span>
+              <select value={taskFilters.assigneeId} onChange={(event) => setTaskFilters((draft) => ({ ...draft, assigneeId: event.target.value }))}>
+                <option value="all">Everyone</option>
+                <option value="">Unassigned</option>
+                {taskAssigneeOptions.map((option) => (
+                  <option key={option.id} value={option.id}>{option.label}</option>
+                ))}
+              </select>
+            </label>
+            <label className="field">
+              <span>Department</span>
+              <select value={taskFilters.department} onChange={(event) => setTaskFilters((draft) => ({ ...draft, department: event.target.value }))}>
+                <option value="all">All departments</option>
+                {["facilities", "finance", "leasing", "operations"].map((option) => (
+                  <option key={option} value={option}>{toTitle(option)}</option>
+                ))}
+              </select>
+            </label>
           </div>
           <div className="thread-list">
             {taskScopes.canSeeMy ? (
@@ -2479,7 +2595,7 @@ function PageRenderer(props: PageRendererProps) {
                 }}
               />
             ) : null}
-            {!taskScopes.canSeeMy && !taskScopes.canSeeDept && !taskScopes.canSeeLive ? (
+            {!taskScopeAccess.canSeeMy && !taskScopeAccess.canSeeDept && !taskScopeAccess.canSeeLive ? (
               <div className="empty-row">This user has not been given task visibility permissions yet.</div>
             ) : null}
           </div>

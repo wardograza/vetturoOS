@@ -460,6 +460,11 @@ small {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+.task-filter-row {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin-bottom: 14px;
+}
+
 .form-grid {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
@@ -758,6 +763,7 @@ small {
   .metrics-grid.four-up,
   .content-grid.balanced,
   .field-row,
+  .task-filter-row,
   .form-grid,
   .button-row {
     grid-template-columns: 1fr;
