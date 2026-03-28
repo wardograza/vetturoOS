@@ -1,7 +1,7 @@
 import { admin, getUserFromBearerToken, readJsonBody, sendJson } from "./_lib/supabase.js";
 import { callOpenAI, classifyDocumentFallback } from "./_lib/openai.js";
 import { findMissingFields, organizationRequiredFields, tenantRequiredFields } from "./_lib/workbook.js";
-import { chooseTaskAssignee } from "./_lib/task-routing.js";
+import { createTaskRecord } from "./_lib/task-create.js";
 
 function currency(value) {
   return new Intl.NumberFormat("en-IN", {
@@ -142,7 +142,6 @@ export default async function handler(req, res) {
       if (intent.intent === "create_task") {
         const taskTitle = String(intent.taskTitle || "").trim();
         const department = String(intent.department || "").trim().toLowerCase();
-        const priority = String(intent.priority || "P2").trim().toUpperCase();
 
         if (!taskTitle || !department) {
           return sendJson(res, 200, {
@@ -161,31 +160,20 @@ export default async function handler(req, res) {
               ) ?? null
             : null;
 
-        const assignee = chooseTaskAssignee({
-          requestedAssigneeId: matchedAssignee?.id || null,
-          profiles,
-          tasks,
-          department,
+        const result = await createTaskRecord({
+          admin,
+          actorId: user?.id || null,
+          body: {
+            title: taskTitle,
+            description: String(intent.taskDescription || message).trim(),
+            department,
+            priority: String(intent.priority || "P2").trim().toUpperCase(),
+            assignedToId: matchedAssignee?.id || null,
+          },
         });
-
-        const { error: createError } = await admin.from("tasks").insert({
-          title: taskTitle,
-          description: String(intent.taskDescription || message).trim(),
-          department,
-          priority,
-          status: assignee ? "assigned" : "open",
-          assigned_to: assignee?.id || null,
-          created_by: user?.id || null,
-        });
-
-        if (createError) {
-          throw createError;
-        }
 
         return sendJson(res, 200, {
-          reply: assignee
-            ? `I created "${taskTitle}" and assigned it to ${assignee.full_name || "the selected teammate"}.`
-            : `I created "${taskTitle}" and left it open because no eligible assignee was available right now.`,
+          reply: result.message || `I created "${taskTitle}".`,
           action: { page: "Tasks" },
         });
       }
@@ -328,7 +316,7 @@ export default async function handler(req, res) {
     try {
       const aiReply = await callOpenAI({
         system:
-          "You are Vetturo, a mall operations copilot. Answer using the provided JSON context only. If information is missing, explicitly say what onboarding data is missing and what the client must provide. Keep answers concise and operational.",
+          "You are Vetturo, a mall operations copilot. First use the provided mall data and approved memory. If the answer still needs outside context, use web search and cite sources with direct URLs. If information is missing from onboarding, explicitly say what exact data the mall team still needs to provide. Keep answers concise, operational, and trustworthy.",
         input: JSON.stringify({
           userMessage: message,
           organization,
@@ -336,6 +324,11 @@ export default async function handler(req, res) {
           tasks: tasks.slice(0, 20),
           documents: documents.slice(0, 20),
         }),
+        tools: [
+          {
+            type: "web_search_preview",
+          },
+        ],
       });
 
       return sendJson(res, 200, { reply: aiReply });

@@ -408,6 +408,54 @@ async function uploadToVault(file: File) {
 }
 
 async function parseOnboardingWorkbook(file: File) {
+  const isCsv = /\.csv$/i.test(file.name);
+
+  if (isCsv) {
+    const text = await file.text();
+    const workbook = XLSX.read(text, { type: "string" });
+    const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+    const rows = firstSheet
+      ? (XLSX.utils.sheet_to_json(firstSheet, {
+          header: 1,
+          raw: false,
+          defval: "",
+        }) as string[][])
+      : [];
+
+    const headers = (rows[0] ?? []).map((value) => String(value || "").trim());
+    const dataRows = rows.slice(1).filter((row) => row.some((cell) => String(cell || "").trim() !== ""));
+
+    if (headers.includes("Organization_Name")) {
+      const organizationPayload = Object.fromEntries(
+        headers.map((header, index) => [header, dataRows[0]?.[index] ?? ""]).filter(([header]) => Boolean(header)),
+      );
+
+      return {
+        workbookType: "onboarding",
+        organizationPayload,
+        tenantPayloads: [],
+        sheetNames: workbook.SheetNames,
+      };
+    }
+
+    if (headers.includes("Brand_Name") && headers.includes("Unit_Code")) {
+      const tenantPayloads = dataRows
+        .map((row) =>
+          Object.fromEntries(
+            headers.map((header, index) => [header, row[index] ?? ""]).filter(([header]) => Boolean(header)),
+          ),
+        )
+        .filter((row) => String(row.Brand_Name || "").trim() !== "");
+
+      return {
+        workbookType: "onboarding",
+        organizationPayload: {},
+        tenantPayloads,
+        sheetNames: workbook.SheetNames,
+      };
+    }
+  }
+
   const buffer = await file.arrayBuffer();
   const workbook = XLSX.read(buffer, { type: "array" });
 
@@ -1087,12 +1135,12 @@ function App() {
         await callApi("/api/document-register", {
           fileName: botAttachment.name,
           storagePath,
-          documentType: /\.xlsx$/i.test(botAttachment.name) ? "onboarding" : "general",
+          documentType: /\.(xlsx|xls|csv)$/i.test(botAttachment.name) ? "onboarding" : "general",
           domainCategory: result.domain,
           subCategory: result.subCategory,
           purposeSummary: result.purposeSummary,
           parserSummary: message || `Uploaded via copilot chat.`,
-          sourcePayload: /\.xlsx$/i.test(botAttachment.name) ? await parseOnboardingWorkbook(botAttachment) : null,
+          sourcePayload: /\.(xlsx|xls|csv)$/i.test(botAttachment.name) ? await parseOnboardingWorkbook(botAttachment) : null,
         });
 
         setBotAttachment(null);
@@ -1257,7 +1305,7 @@ function App() {
 
     try {
       const storagePath = await uploadToVault(uploadDraft.file);
-      const isWorkbook = /\.xlsx$/i.test(uploadDraft.file.name);
+      const isWorkbook = /\.(xlsx|xls|csv)$/i.test(uploadDraft.file.name);
       const parsedPayload = isWorkbook ? await parseOnboardingWorkbook(uploadDraft.file) : null;
 
       await callApi("/api/document-register", {
@@ -1590,7 +1638,7 @@ function App() {
             />
             <label className="field">
               <span>Attach file</span>
-              <input type="file" accept=".pdf,.xlsx,.xls" onChange={(event) => setBotAttachment(event.target.files?.[0] || null)} />
+              <input type="file" accept=".pdf,.xlsx,.xls,.csv" onChange={(event) => setBotAttachment(event.target.files?.[0] || null)} />
               <small>{botAttachment ? `Attached: ${botAttachment.name}` : "Optional: upload through the copilot."}</small>
             </label>
             <button className="primary-button full-width" type="submit">
@@ -2244,16 +2292,14 @@ function PageRenderer(props: PageRendererProps) {
               <span>Assign To</span>
               <select value={taskDraft.assignedToId} onChange={(event) => setTaskDraft((draft) => ({ ...draft, assignedToId: event.target.value }))}>
                 <option value="">Unassigned</option>
-                {profiles.map((profile) => (
+                {profiles
+                  .filter((profile) => String(profile.availabilityStatus || "").toLowerCase() !== "pto")
+                  .map((profile) => (
                   <option
-                    disabled={String(profile.availabilityStatus || "").toLowerCase() === "pto"}
                     key={profile.id}
                     value={profile.id}
                   >
                     {profile.fullName}
-                    {String(profile.availabilityStatus || "").toLowerCase() === "pto"
-                      ? ` (PTO ${profile.ptoFrom ? formatDate(profile.ptoFrom) : ""}${profile.ptoTo ? ` to ${formatDate(profile.ptoTo)}` : ""})`
-                      : ""}
                   </option>
                 ))}
               </select>
@@ -2341,7 +2387,7 @@ function PageRenderer(props: PageRendererProps) {
           <form className="form-stack" onSubmit={onUploadSubmit}>
             <label className="field">
               <span>File</span>
-              <input type="file" accept=".pdf,.xlsx,.xls" onChange={(event) => setUploadDraft((draft) => ({ ...draft, file: event.target.files?.[0] || null }))} />
+              <input type="file" accept=".pdf,.xlsx,.xls,.csv" onChange={(event) => setUploadDraft((draft) => ({ ...draft, file: event.target.files?.[0] || null }))} />
             </label>
             <label className="field">
               <span>Notes</span>
