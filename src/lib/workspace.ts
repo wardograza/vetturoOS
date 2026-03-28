@@ -260,10 +260,15 @@ function buildOnboardingGaps(
 
 export async function fetchWorkspaceData(accessToken?: string): Promise<WorkspaceData> {
   if (typeof window !== "undefined" && accessToken) {
-    const response = await fetch("/api/workspace", {
+    const response = await fetch("/api/refresh", {
+      method: "POST",
       headers: {
         Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
       },
+      body: JSON.stringify({
+        action: "workspace",
+      }),
     });
 
     if (response.ok) {

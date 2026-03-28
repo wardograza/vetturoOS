@@ -894,12 +894,13 @@ function App() {
     let loginEmailAddress = loginEmail.trim();
 
     if (!loginEmailAddress.includes("@")) {
-      const lookupResponse = await fetch("/api/auth-lookup", {
+      const lookupResponse = await fetch("/api/profile-update", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
+          action: "lookup_username",
           username: loginEmailAddress,
         }),
       });
