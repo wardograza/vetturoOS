@@ -132,7 +132,7 @@ export default async function handler(req, res) {
           "You are Vetturo's mall-ops action router. Return strict JSON with keys intent, page, taskTitle, taskDescription, department, priority, assignee, answer. Intents: answer, navigate, create_task. Only choose create_task when the user is clearly asking to create, assign, escalate, route, or log work. Departments must be one of facilities, finance, leasing, operations. Priorities must be one of P1, P2, P3.",
         input: JSON.stringify({
           userMessage: message,
-          visiblePages: ["Overview", "Tenants", "Tasks", "Communications", "Document Vault", "Leasing Intel", "Approvals", "Invite User", "Configs"],
+          visiblePages: ["Overview", "Tenants", "Tasks", "Document Vault", "Leasing Intel", "Approvals", "Invite User", "Configs"],
         }),
         responseFormat: "json",
       });

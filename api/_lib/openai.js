@@ -1,4 +1,4 @@
-export async function callOpenAI({ system, input, responseFormat = "text" }) {
+export async function callOpenAI({ system, input, responseFormat = "text", model = "gpt-4.1-mini", tools, toolChoice }) {
   const apiKey = process.env.OPENAI_API_KEY;
 
   if (!apiKey) {
@@ -12,7 +12,7 @@ export async function callOpenAI({ system, input, responseFormat = "text" }) {
       Authorization: `Bearer ${apiKey}`,
     },
     body: JSON.stringify({
-      model: "gpt-4.1-mini",
+      model,
       input: [
         {
           role: "system",
@@ -31,6 +31,8 @@ export async function callOpenAI({ system, input, responseFormat = "text" }) {
               },
             }
           : undefined,
+      tools,
+      tool_choice: toolChoice,
     }),
   });
 

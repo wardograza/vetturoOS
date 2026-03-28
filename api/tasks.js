@@ -51,6 +51,15 @@ export default async function handler(req, res) {
       department,
     });
 
+    const normalizedSlaDueAt = (() => {
+      if (!(typeof body.slaDueAt === "string" && body.slaDueAt.trim())) {
+        return null;
+      }
+
+      const parsed = new Date(body.slaDueAt);
+      return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
+    })();
+
     const basePayload = {
       title,
       description: typeof body.description === "string" && body.description.trim() ? body.description.trim() : null,
@@ -59,19 +68,53 @@ export default async function handler(req, res) {
       status: assignee ? "assigned" : "open",
       assigned_to: assignee?.id || null,
       proof_required: Boolean(body.proofRequired),
-      sla_due_at: body.slaDueAt || null,
+      sla_due_at: normalizedSlaDueAt,
       ...(user?.id || body.createdBy ? { created_by: user?.id || body.createdBy } : {}),
     };
 
-    const { data, error } = await admin.from("tasks").insert(basePayload).select("id").single();
+    const payloadVariants = [
+      basePayload,
+      { ...basePayload, created_by: undefined },
+      { ...basePayload, sla_due_at: null },
+      { ...basePayload, assigned_to: null, status: "open" },
+      {
+        title,
+        description: basePayload.description,
+        department,
+        priority,
+        status: "open",
+      },
+    ];
 
-    if (error || !data) {
-      throw error ?? new Error("Task creation failed.");
+    let insertedRow = null;
+    let lastError = null;
+
+    for (const variant of payloadVariants) {
+      const sanitized = Object.fromEntries(
+        Object.entries(variant).filter(([, value]) => value !== undefined),
+      );
+
+      const { data, error } = await admin.from("tasks").insert(sanitized).select("id").single();
+      if (!error && data) {
+        insertedRow = data;
+        lastError = null;
+        break;
+      }
+
+      lastError = error;
+    }
+
+    if (!insertedRow) {
+      const detail =
+        lastError && typeof lastError === "object"
+          ? [lastError.message, lastError.details, lastError.hint].filter(Boolean).join(" ")
+          : "";
+      throw new Error(detail || "Task creation failed.");
     }
 
     return sendJson(res, 200, {
       ok: true,
-      id: data.id,
+      id: insertedRow.id,
       assignedToId: assignee?.id || null,
       assignedToName: assignee?.full_name || null,
       status: assignee ? "assigned" : "open",

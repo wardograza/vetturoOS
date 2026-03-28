@@ -136,6 +136,11 @@ export interface DecisionDnaRecord {
   cannibalizationRisk: number;
   totalScore: number;
   recommendation: string;
+  researchSummary?: string | null;
+  targetUnit?: string | null;
+  replacementBrand?: string | null;
+  demandSignals?: string[] | null;
+  sources?: string[] | null;
 }
 
 export interface InviteRecord {

@@ -294,7 +294,7 @@ export async function fetchWorkspaceData(accessToken?: string): Promise<Workspac
     ),
     safeSelect<Record<string, unknown>>(
       "decision_dna_scores",
-      "id, candidate_brand_name, category, category_synergy, technical_fit, financial_health, cannibalization_risk, total_score, recommendation",
+      "id, candidate_brand_name, category, category_synergy, technical_fit, financial_health, cannibalization_risk, total_score, recommendation, research_summary, target_unit, replacement_brand, demand_signals, sources",
     ),
     safeSelect<Record<string, unknown>>(
       "profiles",
@@ -366,6 +366,11 @@ export async function fetchWorkspaceData(accessToken?: string): Promise<Workspac
     cannibalizationRisk: toNumber(row.cannibalization_risk) ?? 0,
     totalScore: toNumber(row.total_score) ?? 0,
     recommendation: String(row.recommendation),
+    researchSummary: (row.research_summary as string | null) ?? null,
+    targetUnit: (row.target_unit as string | null) ?? null,
+    replacementBrand: (row.replacement_brand as string | null) ?? null,
+    demandSignals: Array.isArray(row.demand_signals) ? (row.demand_signals as string[]) : null,
+    sources: Array.isArray(row.sources) ? (row.sources as string[]) : null,
   }));
 
   const profiles: AuthProfile[] = profilesResult.data.map((row) => ({

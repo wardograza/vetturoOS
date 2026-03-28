@@ -91,6 +91,13 @@ end $$;
 do $$
 begin
   if exists (select 1 from information_schema.tables where table_schema = 'public' and table_name = 'decision_dna_scores') then
+    alter table public.decision_dna_scores
+      add column if not exists research_summary text,
+      add column if not exists target_unit text,
+      add column if not exists replacement_brand text,
+      add column if not exists demand_signals jsonb,
+      add column if not exists sources jsonb;
+
     if exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'decision_dna_scores' and column_name = 'mall_id') then
       alter table public.decision_dna_scores alter column mall_id drop not null;
     end if;

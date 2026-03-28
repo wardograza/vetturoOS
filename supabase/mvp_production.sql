@@ -188,6 +188,11 @@ create table if not exists public.decision_dna_scores (
   cannibalization_risk numeric(5,2) not null default 0,
   total_score numeric(5,2) not null default 0,
   recommendation text not null default 'Review',
+  research_summary text,
+  target_unit text,
+  replacement_brand text,
+  demand_signals jsonb,
+  sources jsonb,
   created_at timestamptz not null default now()
 );
 

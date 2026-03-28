@@ -51,10 +51,10 @@ interface InviteDraft {
 interface LeasingDraft {
   candidateBrandName: string;
   category: string;
-  categorySynergy: number;
-  technicalFit: number;
-  financialHealth: number;
-  cannibalizationRisk: number;
+  targetUnit: string;
+  replacementBrand: string;
+  areaContext: string;
+  specificQuestion: string;
 }
 
 interface TenantDraft {
@@ -119,7 +119,6 @@ const navItems: NavPage[] = [
   "Profile",
   "Tenants",
   "Tasks",
-  "Communications",
   "Document Vault",
   "Leasing Intel",
   "Approvals",
@@ -172,10 +171,10 @@ const defaultInviteDraft: InviteDraft = {
 const defaultLeasingDraft: LeasingDraft = {
   candidateBrandName: "",
   category: "",
-  categorySynergy: 75,
-  technicalFit: 75,
-  financialHealth: 75,
-  cannibalizationRisk: 25,
+  targetUnit: "",
+  replacementBrand: "",
+  areaContext: "",
+  specificQuestion: "",
 };
 
 const defaultUploadDraft: UploadDraft = {
@@ -213,7 +212,6 @@ const defaultManagedUserDraft: ManagedUserDraft = {
 const pagePermissions: Partial<Record<NavPage, string[]>> = {
   Overview: ["view_dashboard"],
   Tasks: ["create_tasks", "assign_tasks"],
-  Communications: ["send_communications"],
   "Document Vault": ["view_documents", "approve_documents"],
   "Leasing Intel": ["view_leasing_intel"],
   Approvals: ["approve_documents"],
@@ -845,6 +843,14 @@ function App() {
     [tenantDetailState.tenantId, tenantResults],
   );
 
+  const detailBrandStats = useMemo(
+    () => {
+      const stats = detailTenant?.sourcePayload?.brandStats as unknown;
+      return stats && typeof stats === "object" ? (stats as Record<string, unknown>) : null;
+    },
+    [detailTenant],
+  );
+
   useEffect(() => {
     setTenantPage(1);
   }, [tenantSearch, tenantPageSize]);
@@ -1182,9 +1188,14 @@ function App() {
     setSavingState("leasing");
 
     try {
-      await callApi("/api/leasing-intel", leasingDraft);
+      const result = await callApi<{ analysis?: { summary?: string; recommendation?: string } }>("/api/leasing-intel", leasingDraft);
       setLeasingDraft(defaultLeasingDraft);
-      pushBot("assistant", "Decision DNA entry saved.");
+      pushBot(
+        "assistant",
+        result.analysis?.summary
+          ? `Leasing research complete. ${result.analysis.summary}`
+          : "Leasing research complete and saved into Decision DNA.",
+      );
       await loadWorkspace();
     } catch (error) {
       setWorkspaceError(error instanceof Error ? error.message : "Leasing intel save failed.");
@@ -1685,6 +1696,18 @@ function App() {
                 <strong>Brand profile</strong>
                 <p>{detailTenant.categoryPrimary || "No category"} • {detailTenant.categorySecondary || "No sub-category"} • {detailTenant.parentCompany || "No parent company"}</p>
                 <small>Lease expiry {formatDate(detailTenant.leaseExpiryDate)} • Store manager {detailTenant.storeManagerName || "Not provided"}</small>
+              </div>
+              <div className="thread-card">
+                <strong>Operating indicators</strong>
+                <p>
+                  Health ratio {String(detailBrandStats?.["Health Ratio"] || detailTenant.lastAuditScore || "Missing")} •
+                  Sales density {String(detailBrandStats?.["Sales psf"] || "Missing")} •
+                  Trading density {String(detailBrandStats?.["Trading Density"] || "Missing")}
+                </p>
+                <small>
+                  Late payments {String(detailBrandStats?.["Delayed / bounce Cases"] || "Missing")} •
+                  Sales category {String(detailBrandStats?.["Sales Category"] || detailTenant.categoryPrimary || "Missing")}
+                </small>
               </div>
               <div className="graph-card">
                 <strong>Category comparison</strong>
@@ -2367,7 +2390,7 @@ function PageRenderer(props: PageRendererProps) {
           <div className="panel-header">
             <div>
               <p className="panel-kicker">Decision DNA</p>
-              <h3>Live evaluations</h3>
+              <h3>Brand replacement and fit research</h3>
             </div>
           </div>
           <div className="thread-list">
@@ -2378,12 +2401,22 @@ function PageRenderer(props: PageRendererProps) {
                     <strong>{item.candidateBrandName}</strong>
                     <span className={`badge ${item.totalScore >= 70 ? "good" : "warn"}`}>{item.recommendation}</span>
                   </div>
-                  <p>{item.category} • Score {item.totalScore}</p>
-                  <small>Synergy {item.categorySynergy} • Technical {item.technicalFit} • Financial {item.financialHealth} • Cannibalization {item.cannibalizationRisk}</small>
+                  <p>
+                    {item.category} • Score {item.totalScore}
+                    {item.targetUnit ? ` • Target ${item.targetUnit}` : ""}
+                    {item.replacementBrand ? ` • Replace ${item.replacementBrand}` : ""}
+                  </p>
+                  <small>
+                    Synergy {item.categorySynergy} • Technical {item.technicalFit} • Financial {item.financialHealth} • Cannibalization {item.cannibalizationRisk}
+                  </small>
+                  {item.researchSummary ? <p className="top-gap">{item.researchSummary}</p> : null}
+                  {item.demandSignals?.length ? (
+                    <small>Demand signals: {item.demandSignals.join(" • ")}</small>
+                  ) : null}
                 </div>
               ))
             ) : (
-              <div className="empty-row">No Decision DNA entries yet.</div>
+              <div className="empty-row">No brand-vetting research has been saved yet.</div>
             )}
           </div>
         </article>
@@ -2391,7 +2424,7 @@ function PageRenderer(props: PageRendererProps) {
           <div className="panel-header">
             <div>
               <p className="panel-kicker">New Brand Vetting</p>
-              <h3>Create evaluation</h3>
+              <h3>Research a candidate brand</h3>
             </div>
           </div>
           <form className="form-stack" onSubmit={onLeasingSubmit}>
@@ -2399,34 +2432,44 @@ function PageRenderer(props: PageRendererProps) {
               <span>Candidate Brand</span>
               <input value={leasingDraft.candidateBrandName} onChange={(event) => setLeasingDraft((draft) => ({ ...draft, candidateBrandName: event.target.value }))} />
             </label>
-            <label className="field">
-              <span>Category</span>
-              <input value={leasingDraft.category} onChange={(event) => setLeasingDraft((draft) => ({ ...draft, category: event.target.value }))} />
-            </label>
-            {[
-              ["Category Synergy", "categorySynergy"],
-              ["Technical Fit", "technicalFit"],
-              ["Financial Health", "financialHealth"],
-              ["Cannibalization Risk", "cannibalizationRisk"],
-            ].map(([label, key]) => (
-              <label className="field" key={key}>
-                <span>{label}</span>
-                <input
-                  type="number"
-                  min="0"
-                  max="100"
-                  value={String(leasingDraft[key as keyof LeasingDraft])}
-                  onChange={(event) =>
-                    setLeasingDraft((draft) => ({
-                      ...draft,
-                      [key]: Number(event.target.value),
-                    }))
-                  }
-                />
+            <div className="field-row">
+              <label className="field">
+                <span>Category</span>
+                <input value={leasingDraft.category} onChange={(event) => setLeasingDraft((draft) => ({ ...draft, category: event.target.value }))} />
               </label>
-            ))}
+              <label className="field">
+                <span>Target Unit / Floor</span>
+                <input value={leasingDraft.targetUnit} onChange={(event) => setLeasingDraft((draft) => ({ ...draft, targetUnit: event.target.value }))} />
+              </label>
+            </div>
+            <label className="field">
+              <span>Replacement Brand or Weak Tenant</span>
+              <input
+                placeholder="Optional: brand being considered for replacement"
+                value={leasingDraft.replacementBrand}
+                onChange={(event) => setLeasingDraft((draft) => ({ ...draft, replacementBrand: event.target.value }))}
+              />
+            </label>
+            <label className="field">
+              <span>Area / Catchment Context</span>
+              <textarea
+                placeholder="Example: young office-goers, premium residential catchment, nightlife district, family-heavy weekends"
+                rows={3}
+                value={leasingDraft.areaContext}
+                onChange={(event) => setLeasingDraft((draft) => ({ ...draft, areaContext: event.target.value }))}
+              />
+            </label>
+            <label className="field">
+              <span>What should Vetturo answer?</span>
+              <textarea
+                placeholder="Example: Would Brand X outperform the current tenant in this unit? What is the likely footfall and revenue upside?"
+                rows={4}
+                value={leasingDraft.specificQuestion}
+                onChange={(event) => setLeasingDraft((draft) => ({ ...draft, specificQuestion: event.target.value }))}
+              />
+            </label>
             <button className="primary-button full-width" disabled={savingState === "leasing"} type="submit">
-              {savingState === "leasing" ? "Saving…" : "Save evaluation"}
+              {savingState === "leasing" ? "Researching…" : "Run brand fit research"}
             </button>
           </form>
         </article>

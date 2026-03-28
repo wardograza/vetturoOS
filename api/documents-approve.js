@@ -66,6 +66,7 @@ export default async function handler(req, res) {
     const tenantPayloads = Array.isArray(payload.tenantPayloads) ? payload.tenantPayloads : null;
     const rentRollRows = Array.isArray(payload.rentRollRows) ? payload.rentRollRows : null;
     const financeSummaryRows = Array.isArray(payload.financeSummaryRows) ? payload.financeSummaryRows : null;
+    const brandStatsRows = Array.isArray(payload.brandStatsRows) ? payload.brandStatsRows : null;
     let conflicts = [];
 
     if (organizationPayload || tenantPayloads) {
@@ -176,6 +177,11 @@ export default async function handler(req, res) {
       }
     } else if (rentRollRows || financeSummaryRows) {
       const structuredRows = (rentRollRows ?? []).map(mapRentRollRowToTenantPayload);
+      const brandStatsByName = new Map(
+        (brandStatsRows ?? [])
+          .filter((row) => row && (row["Brand Name"] || row["Customer Name"]))
+          .map((row) => [String(row["Brand Name"] || row["Customer Name"]).trim().toLowerCase(), row]),
+      );
 
       for (const tenantPayload of structuredRows) {
         if (!tenantPayload.Brand_Name) {
@@ -223,9 +229,12 @@ export default async function handler(req, res) {
           exhaust_provision_yn: tenantPayload.Exhaust_Provision_YN || null,
           insurance_expiry: tenantPayload.Insurance_Expiry || null,
           trade_license_expiry: tenantPayload.Trade_License_Expiry || null,
-          last_audit_score: numberOrNull(tenantPayload.Last_Audit_Score),
+          last_audit_score:
+            numberOrNull(brandStatsByName.get(String(tenantPayload.Brand_Name || "").trim().toLowerCase())?.["Health Ratio"]) ??
+            numberOrNull(tenantPayload.Last_Audit_Score),
           source_payload: {
             ...tenantPayload,
+            brandStats: brandStatsByName.get(String(tenantPayload.Brand_Name || "").trim().toLowerCase()) || null,
             financeWorkbook: true,
           },
         });
@@ -238,7 +247,7 @@ export default async function handler(req, res) {
         structured_payload: {
           financeSummaryRows: financeSummaryRows ?? [],
           rentRollRowsCount: rentRollRows?.length ?? 0,
-          brandStatsRowsCount: Array.isArray(payload.brandStatsRows) ? payload.brandStatsRows.length : 0,
+          brandStatsRowsCount: brandStatsRows?.length ?? 0,
           sourcePayload: payload,
         },
       });
