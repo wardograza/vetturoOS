@@ -2095,9 +2095,24 @@ function App() {
             </div>
             <div className="thread-list">
               <div className="mini-stats three-up">
-                <MetricCard label="Rent" value={formatCompactCurrency(detailTenant.rent)} note="Tracked base" />
-                <MetricCard label="SBA / GLA" value={detailTenant.unitGlaSba ? String(detailTenant.unitGlaSba) : "N/A"} note="Area" />
-                <MetricCard label="Audit / Health" value={detailTenant.lastAuditScore ? `${detailTenant.lastAuditScore}` : "N/A"} note="Latest score" />
+                <MetricCardWithInfo
+                  label="Rent"
+                  value={formatCompactCurrency(detailTenant.rent)}
+                  note="Tracked base"
+                  info="Tracked base rent for this brand. Vetturo derives this from MG Rent Monthly or the mapped tenant rent value stored in the approved tenant profile."
+                />
+                <MetricCardWithInfo
+                  label="SBA / GLA"
+                  value={detailTenant.unitGlaSba ? String(detailTenant.unitGlaSba) : "N/A"}
+                  note="Area"
+                  info="Saleable or gross leasable area for the unit. This is read directly from Unit GLA / SBA in the approved onboarding sheet."
+                />
+                <MetricCardWithInfo
+                  label="Audit / Health"
+                  value={detailTenant.lastAuditScore ? `${detailTenant.lastAuditScore}` : "N/A"}
+                  note="Latest score"
+                  info="Latest stored health or audit score for the brand. Vetturo uses Last Audit Score first, and can also map health-style values from approved finance or brand-stat sheets when available."
+                />
               </div>
               <div className="thread-card">
                 <strong>Brand profile</strong>
@@ -2118,9 +2133,24 @@ function App() {
               </div>
               <div className="graph-card">
                 <strong>Category comparison</strong>
-                <BarMetric label="Rent vs category average" value={detailTenant.rent} max={Math.max(...tenantResults.filter((tenant) => tenant.categoryPrimary === detailTenant.categoryPrimary).map((tenant) => tenant.rent), detailTenant.rent, 1)} />
-                <BarMetric label="Area footprint" value={detailTenant.unitGlaSba || 0} max={Math.max(...tenantResults.map((tenant) => tenant.unitGlaSba || 0), detailTenant.unitGlaSba || 0, 1)} />
-                <BarMetric label="Audit / health ratio" value={detailTenant.lastAuditScore || 0} max={100} />
+                <BarMetric
+                  label="Rent vs category average"
+                  value={detailTenant.rent}
+                  max={Math.max(...tenantResults.filter((tenant) => tenant.categoryPrimary === detailTenant.categoryPrimary).map((tenant) => tenant.rent), detailTenant.rent, 1)}
+                  info="This bar compares the brand's tracked rent against the highest tracked rent currently stored within the same primary category. It gives a directional position inside that category cohort, not an external market benchmark."
+                />
+                <BarMetric
+                  label="Area footprint"
+                  value={detailTenant.unitGlaSba || 0}
+                  max={Math.max(...tenantResults.map((tenant) => tenant.unitGlaSba || 0), detailTenant.unitGlaSba || 0, 1)}
+                  info="This shows the unit's relative area against the largest area currently stored in the tenant master. It helps compare physical footprint across brands in the mall."
+                />
+                <BarMetric
+                  label="Audit / health ratio"
+                  value={detailTenant.lastAuditScore || 0}
+                  max={100}
+                  info="This is a normalized 0 to 100 health-style score based on the latest audit or mapped health ratio available for the brand in approved memory."
+                />
               </div>
               <div className="thread-card">
                 <strong>Onboarding gaps</strong>
@@ -3464,6 +3494,38 @@ function MetricCard({ label, value, note }: { label: string; value: string; note
   );
 }
 
+function InfoHint({ text }: { text: string }) {
+  return (
+    <span className="info-hint" tabIndex={0}>
+      i
+      <span className="info-hint-bubble">{text}</span>
+    </span>
+  );
+}
+
+function MetricCardWithInfo({
+  label,
+  value,
+  note,
+  info,
+}: {
+  label: string;
+  value: string;
+  note: string;
+  info: string;
+}) {
+  return (
+    <article className="metric-card">
+      <span className="metric-label">
+        {label}
+        <InfoHint text={info} />
+      </span>
+      <strong>{value}</strong>
+      <small>{note}</small>
+    </article>
+  );
+}
+
 function TaskSection({
   title,
   isOpen,
@@ -3509,13 +3571,26 @@ function TaskSection({
   );
 }
 
-function BarMetric({ label, value, max }: { label: string; value: number; max: number }) {
+function BarMetric({
+  label,
+  value,
+  max,
+  info,
+}: {
+  label: string;
+  value: number;
+  max: number;
+  info?: string;
+}) {
   const width = max > 0 ? Math.min(100, Math.round((value / max) * 100)) : 0;
 
   return (
     <div className="bar-metric">
       <div className="bar-metric-copy">
-        <span>{label}</span>
+        <span className="metric-label">
+          {label}
+          {info ? <InfoHint text={info} /> : null}
+        </span>
         <strong>{Number.isFinite(value) ? value : 0}</strong>
       </div>
       <div className="bar-track">

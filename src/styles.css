@@ -347,6 +347,52 @@ small {
   display: block;
 }
 
+.metric-label {
+  display: inline-flex !important;
+  align-items: center;
+  gap: 6px;
+}
+
+.info-hint {
+  position: relative;
+  display: inline-flex;
+  width: 16px;
+  height: 16px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--text-soft);
+  font-size: 0.7rem;
+  line-height: 1;
+  background: rgba(255, 255, 255, 0.5);
+  cursor: help;
+}
+
+.info-hint-bubble {
+  position: absolute;
+  left: calc(100% + 10px);
+  top: 50%;
+  z-index: 12;
+  width: 240px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface-strong);
+  color: var(--text);
+  box-shadow: var(--shadow-soft);
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-50%) translateX(-4px);
+  transition: opacity 140ms ease, transform 140ms ease;
+}
+
+.info-hint:hover .info-hint-bubble,
+.info-hint:focus .info-hint-bubble {
+  opacity: 1;
+  transform: translateY(-50%) translateX(0);
+}
+
 .metric-card strong {
   display: block;
   margin-top: 6px;
