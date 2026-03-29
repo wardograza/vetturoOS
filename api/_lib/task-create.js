@@ -9,6 +9,40 @@ function normalizeIsoDateTime(value) {
   return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
 }
 
+async function insertTaskWithFallback(admin, sanitized) {
+  let createdRecord = null;
+
+  const insertWithSelect = await admin
+    .from("tasks")
+    .insert(sanitized)
+    .select("id, assigned_to, status, sla_due_at")
+    .single();
+
+  if (!insertWithSelect.error) {
+    createdRecord = insertWithSelect.data;
+    return { error: null, createdRecord };
+  }
+
+  const insertOnly = await admin.from("tasks").insert(sanitized);
+  if (!insertOnly.error) {
+    const createdTask = await admin
+      .from("tasks")
+      .select("id, assigned_to, status, sla_due_at")
+      .match({
+        title: sanitized.title,
+        department: sanitized.department,
+      })
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    createdRecord = createdTask.data || null;
+    return { error: null, createdRecord };
+  }
+
+  return { error: insertOnly.error || insertWithSelect.error, createdRecord: null };
+}
+
 export async function createTaskRecord({ admin, actorId, body }) {
   const title = String(body.title || "").trim();
   const department = String(body.department || "").trim().toLowerCase();
@@ -108,18 +142,11 @@ export async function createTaskRecord({ admin, actorId, body }) {
       Object.entries(variant.payload).filter(([, value]) => value !== undefined),
     );
 
-    const { error } = await admin.from("tasks").insert(sanitized);
+    const { error, createdRecord } = await insertTaskWithFallback(admin, sanitized);
     if (!error) {
-      const createdTask = await admin
-        .from("tasks")
-        .select("id, assigned_to, status, sla_due_at")
-        .order("created_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
-      const taskId = createdTask.data?.id || null;
-      let finalAssignedToId = createdTask.data?.assigned_to || null;
-      let finalStatus = createdTask.data?.status || "open";
+      const taskId = createdRecord?.id || null;
+      let finalAssignedToId = createdRecord?.assigned_to || null;
+      let finalStatus = createdRecord?.status || "open";
 
       if (taskId && assignee && !finalAssignedToId && !variant.keepsAssignment) {
         const assignResult = await admin

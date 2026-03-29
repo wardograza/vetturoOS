@@ -1059,6 +1059,26 @@ function App() {
     [taskDetailId, tasks],
   );
 
+  const isTaskManageDirty = useMemo(() => {
+    if (!selectedTask) {
+      return false;
+    }
+
+    const currentStatus = selectedTask.status || "open";
+    const currentPriority = selectedTask.priority || "P2";
+    const currentAssignedToId = selectedTask.assignedToId || "";
+    const currentSlaDueAt = toDateTimeLocalValue(selectedTask.slaDueAt);
+    const currentComment = taskManageDraft.comment.trim();
+
+    return (
+      taskManageDraft.status !== currentStatus ||
+      taskManageDraft.priority !== currentPriority ||
+      taskManageDraft.assignedToId !== currentAssignedToId ||
+      taskManageDraft.slaDueAt !== currentSlaDueAt ||
+      currentComment.length > 0
+    );
+  }, [selectedTask, taskManageDraft]);
+
   useEffect(() => {
     setTenantPage(1);
   }, [tenantSearch, tenantPageSize]);
@@ -1371,7 +1391,7 @@ function App() {
 
   async function handleTaskManage(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!selectedTask) {
+    if (!selectedTask || !isTaskManageDirty) {
       return;
     }
 
@@ -2104,7 +2124,7 @@ function App() {
                 <span>Add Comment</span>
                 <textarea rows={3} value={taskManageDraft.comment} onChange={(event) => setTaskManageDraft((draft) => ({ ...draft, comment: event.target.value }))} />
               </label>
-              <button className="primary-button full-width" disabled={savingState === "task-manage"} type="submit">
+              <button className="primary-button full-width" disabled={savingState === "task-manage" || !isTaskManageDirty} type="submit">
                 {savingState === "task-manage" ? "Saving…" : "Update task"}
               </button>
               {currentProfile?.role === "super_admin" || currentProfile?.permissions.includes("delete_tasks") ? (
