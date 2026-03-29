@@ -134,6 +134,7 @@ export default async function handler(req, res) {
           unitCode: row.unit_code,
           rent: Number(row.rent_amount ?? row.source_payload?.MG_Rent_Monthly ?? 0),
           categoryPrimary: row.category_primary ?? row.source_payload?.Category_Primary ?? null,
+          leaseExpiryDate: row.lease_expiry_date ?? row.source_payload?.Lease_Expiry_Date ?? null,
           sourcePayload: row.source_payload ?? {},
         }))
       : legacyTenants.map((row) => ({
@@ -141,12 +142,39 @@ export default async function handler(req, res) {
           unitCode: row.unit_number,
           rent: Number(row.rent ?? 0),
           categoryPrimary: null,
+          leaseExpiryDate: null,
           sourcePayload: {
             Brand_Name: row.tenant_name,
             Unit_Code: row.unit_number,
             MG_Rent_Monthly: row.rent,
           },
         }));
+
+    if (
+      (normalized.includes("expir") || normalized.includes("lease expiry") || normalized.includes("lease expiration")) &&
+      (normalized.includes("revenue") || normalized.includes("rent") || normalized.includes("most"))
+    ) {
+      const now = Date.now();
+      const oneEightyDays = 1000 * 60 * 60 * 24 * 180;
+      const upcomingExpiries = rows
+        .filter((row) => row.leaseExpiryDate)
+        .filter((row) => {
+          const expiry = new Date(String(row.leaseExpiryDate)).getTime();
+          return Number.isFinite(expiry) && expiry >= now && expiry <= now + oneEightyDays;
+        });
+
+      const candidateRows = upcomingExpiries.length > 0
+        ? upcomingExpiries
+        : rows.filter((row) => row.leaseExpiryDate);
+
+      if (candidateRows.length > 0) {
+        const topExpiringBrand = [...candidateRows].sort((left, right) => Number(right.rent || 0) - Number(left.rent || 0))[0];
+        return sendJson(res, 200, {
+          reply: `${topExpiringBrand.brandName} currently has the highest tracked rent base among brands nearing lease expiry at ${currency(topExpiringBrand.rent)}. Its mapped unit is ${topExpiringBrand.unitCode || "N/A"} and the stored lease expiry is ${topExpiringBrand.leaseExpiryDate || "not available"}.`,
+          action: { page: "Tenants" },
+        });
+      }
+    }
 
     try {
       const intentReply = await callOpenAI({

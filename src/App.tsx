@@ -1231,18 +1231,22 @@ function App() {
       {
         label: "Tenants",
         value: String(tenants.length),
+        page: "Tenants" as NavPage,
       },
       {
         label: "Tasks",
         value: String(tasks.length),
+        page: "Tasks" as NavPage,
       },
       {
         label: "Memory",
         value: String(documents.filter((document) => document.isInCoreMemory).length),
+        page: "Document Vault" as NavPage,
       },
       {
         label: "Approvals",
         value: String(pendingDocuments.length),
+        page: "Approvals" as NavPage,
       },
     ],
     [documents, pendingDocuments.length, tasks.length, tenants.length],
@@ -2324,10 +2328,15 @@ function App() {
 
           <div className="bot-context-strip">
             {copilotContextItems.map((item) => (
-              <div className="bot-context-chip" key={item.label}>
+              <button
+                className="bot-context-chip"
+                key={item.label}
+                onClick={() => setActivePage(item.page)}
+                type="button"
+              >
                 <strong>{item.value}</strong>
                 <span>{item.label}</span>
-              </div>
+              </button>
             ))}
           </div>
 

@@ -699,6 +699,9 @@ small {
   border-radius: 14px;
   border: 1px solid var(--line);
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.52) 0%, rgba(255, 255, 255, 0.34) 100%);
+  text-align: left;
+  color: inherit;
+  transition: transform 140ms ease, border-color 140ms ease, background 140ms ease;
 }
 
 .bot-context-chip strong {
@@ -708,6 +711,12 @@ small {
 .bot-context-chip span {
   color: var(--text-soft);
   font-size: 0.72rem;
+}
+
+.bot-context-chip:hover {
+  transform: translateY(-1px);
+  border-color: rgba(31, 122, 92, 0.22);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.62) 0%, rgba(244, 250, 247, 0.44) 100%);
 }
 
 .bot-suggestions {
@@ -839,8 +848,8 @@ small {
 }
 
 .tenant-modal {
-  width: min(860px, calc(100vw - 32px));
-  max-height: 85vh;
+  width: min(1120px, calc(100vw - 32px));
+  max-height: 88vh;
   overflow: auto;
 }
 
