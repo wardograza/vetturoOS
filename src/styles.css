@@ -707,6 +707,7 @@ small {
   padding: 2px 2px 2px 0;
   min-height: 240px;
   max-height: 320px;
+  scroll-behavior: smooth;
 }
 
 .bot-message {
@@ -757,13 +758,15 @@ small {
   border-radius: 14px;
   border: none;
   background: rgba(255, 255, 255, 0.1);
-  padding: 2px 0 0;
+  padding: 14px 14px 8px;
+  line-height: 1.5;
+  resize: none;
 }
 
 .bot-composer-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center;
+  align-items: stretch;
   gap: 10px;
 }
 
@@ -798,6 +801,9 @@ small {
 .bot-send-button {
   min-width: 112px;
   align-self: stretch;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .tenant-modal {

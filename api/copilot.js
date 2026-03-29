@@ -175,6 +175,7 @@ export default async function handler(req, res) {
         return sendJson(res, 200, {
           reply: result.message || `I created "${taskTitle}".`,
           action: { page: "Tasks" },
+          refresh: true,
         });
       }
 

@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { Session } from "@supabase/supabase-js";
 import * as XLSX from "xlsx";
 import { supabase } from "./lib/supabase";
@@ -694,6 +694,7 @@ function App() {
   const [botAttachment, setBotAttachment] = useState<File | null>(null);
   const [botToast, setBotToast] = useState<BotToast | null>(null);
   const [hasUnreadBot, setHasUnreadBot] = useState(false);
+  const botBodyRef = useRef<HTMLDivElement | null>(null);
   const [loginEmail, setLoginEmail] = useState("wardograza@gmail.com");
   const [loginPassword, setLoginPassword] = useState("Akkeef.2000");
   const [showLoginPassword, setShowLoginPassword] = useState(false);
@@ -835,6 +836,20 @@ function App() {
   useEffect(() => {
     document.documentElement.dataset.theme = profileDraft.theme === "dark" ? "dark" : "light";
   }, [profileDraft.theme]);
+
+  useEffect(() => {
+    if (!isBotOpen || !botBodyRef.current) {
+      return;
+    }
+
+    const body = botBodyRef.current;
+    window.requestAnimationFrame(() => {
+      body.scrollTo({
+        top: body.scrollHeight,
+        behavior: "smooth",
+      });
+    });
+  }, [botMessages, isBotOpen]);
 
   const currentProfile = useMemo<AuthProfile | null>(() => {
     if (!workspace || !session?.user?.email) {
@@ -1460,7 +1475,7 @@ function App() {
         return;
       }
 
-      const result = await callApi<{ reply: string; action?: { page?: NavPage } }>("/api/copilot", {
+      const result = await callApi<{ reply: string; action?: { page?: NavPage }; refresh?: boolean }>("/api/copilot", {
         message,
       });
 
@@ -1469,7 +1484,9 @@ function App() {
       }
 
       pushBot("assistant", result.reply);
-      await loadWorkspace();
+      if (result.refresh) {
+        await loadWorkspace({ silent: true });
+      }
     } catch (error) {
       pushBot("assistant", error instanceof Error ? error.message : "The copilot could not complete that request.");
     }
@@ -2077,7 +2094,7 @@ function App() {
             ))}
           </div>
 
-          <div className="bot-body">
+          <div className="bot-body" ref={botBodyRef}>
             {botMessages.map((message) => (
               <div className={`bot-message ${message.role}`} key={message.id}>
                 <div className="bot-message-meta">
