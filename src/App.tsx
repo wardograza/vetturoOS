@@ -972,7 +972,11 @@ function App() {
       myTasks,
       deptTasks,
       liveTasks,
-      canSeeMy: permissions.includes("task_scope_my") || role === "super_admin",
+      canSeeMy:
+        permissions.includes("task_scope_my") ||
+        permissions.includes("create_tasks") ||
+        permissions.includes("assign_tasks") ||
+        role === "super_admin",
       canSeeDept: permissions.includes("task_scope_department") || role === "super_admin",
       canSeeLive: permissions.includes("task_scope_all") || role === "super_admin",
     };
@@ -1547,6 +1551,15 @@ function App() {
     if (!managedUserDraft.userId) {
       setWorkspaceError("Select a user first.");
       return;
+    }
+
+    if (action === "delete_user" && typeof window !== "undefined") {
+      const confirmed = window.confirm(
+        `Delete ${managedUserDraft.fullName || managedUserDraft.email}? This cannot be undone from the UI.`,
+      );
+      if (!confirmed) {
+        return;
+      }
     }
 
     setSavingState("user-admin");
@@ -3224,7 +3237,9 @@ function TaskSection({
         <strong>
           {title} ({tasks.length})
         </strong>
-        <span className="badge neutral">{isOpen ? "Collapse" : "Expand"}</span>
+        <span className="section-chevron" aria-hidden="true">
+          {isOpen ? "⌄" : "›"}
+        </span>
       </button>
       {isOpen ? (
         <div className="thread-list top-gap">

@@ -259,15 +259,17 @@ small {
 }
 
 .primary-button {
-  background: linear-gradient(180deg, #1f715a 0%, #175a49 100%);
+  background: linear-gradient(135deg, #1d7a5f 0%, #145242 100%);
   color: #fff;
+  box-shadow: 0 14px 28px rgba(20, 82, 66, 0.18);
 }
 
 .secondary-button,
 .icon-button {
-  background: rgba(255, 255, 255, 0.9);
+  background: rgba(255, 255, 255, 0.72);
   border-color: var(--line);
   color: #32111f;
+  backdrop-filter: blur(8px);
 }
 
 .icon-button {
@@ -333,6 +335,7 @@ small {
 .panel,
 .state-card {
   padding: 18px;
+  box-shadow: 0 16px 38px rgba(45, 17, 32, 0.05);
 }
 
 .metric-card span {
@@ -377,12 +380,15 @@ small {
   padding: 14px;
   border-radius: 18px;
   border: 1px solid var(--line);
-  background: var(--surface-strong);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.76) 0%, rgba(255, 250, 246, 0.94) 100%),
+    var(--surface-strong);
 }
 
 .interactive-row {
   width: 100%;
   text-align: left;
+  transition: transform 140ms ease, box-shadow 140ms ease, border-color 140ms ease;
 }
 
 .section-toggle {
@@ -392,13 +398,26 @@ small {
   justify-content: space-between;
   gap: 12px;
   padding: 0;
+  border: none;
   color: inherit;
   background: transparent;
+}
+
+.section-chevron {
+  color: rgba(57, 28, 43, 0.38);
+  font-size: 1.15rem;
+  line-height: 1;
 }
 
 .interactive-row.selected {
   border-color: rgba(31, 122, 92, 0.35);
   box-shadow: inset 0 0 0 1px rgba(31, 122, 92, 0.16);
+}
+
+.interactive-row:hover {
+  transform: translateY(-1px);
+  border-color: rgba(71, 0, 17, 0.18);
+  box-shadow: 0 12px 28px rgba(45, 17, 32, 0.08);
 }
 
 .tenant-row {
