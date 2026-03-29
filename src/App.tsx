@@ -2053,7 +2053,6 @@ function App() {
               <h3>Copilot</h3>
               <p className="bot-subtitle">Grounded in live mall data, approved memory, and workflow actions.</p>
             </div>
-            <span className="bot-status-pill">Live workspace</span>
           </div>
 
           <div className="bot-context-strip">

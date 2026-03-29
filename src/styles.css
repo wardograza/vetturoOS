@@ -623,89 +623,77 @@ small {
 .bot-panel {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  padding: 16px;
-  max-height: 70vh;
-  border-radius: 24px;
+  gap: 14px;
+  padding: 18px;
+  max-height: min(78vh, 760px);
+  border-radius: 28px;
 }
 
 .bot-panel.floating {
   position: fixed;
   right: 24px;
   bottom: 92px;
-  width: min(400px, calc(100vw - 32px));
+  width: min(430px, calc(100vw - 32px));
   z-index: 20;
 }
 
 .bot-header h3 {
-  font-size: 1.08rem;
+  font-size: 1.18rem;
 }
 
 .bot-header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
+  display: grid;
+  gap: 4px;
 }
 
 .bot-subtitle {
-  margin: 6px 0 0;
+  margin: 2px 0 0;
   color: var(--text-soft);
   line-height: 1.45;
 }
 
-.bot-status-pill {
-  display: inline-flex;
-  align-items: center;
-  padding: 7px 10px;
-  border-radius: 999px;
-  background: rgba(31, 122, 92, 0.12);
-  border: 1px solid rgba(31, 122, 92, 0.16);
-  color: var(--good);
-  font-size: 0.72rem;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-}
-
 .bot-context-strip {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  display: flex;
+  flex-wrap: wrap;
   gap: 8px;
 }
 
 .bot-context-chip {
-  display: grid;
-  gap: 3px;
-  padding: 10px 12px;
-  border-radius: 16px;
+  display: inline-grid;
+  min-width: calc(50% - 4px);
+  flex: 1 1 calc(50% - 4px);
+  gap: 2px;
+  padding: 10px 11px;
+  border-radius: 14px;
   border: 1px solid var(--line);
-  background: rgba(255, 255, 255, 0.42);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.52) 0%, rgba(255, 255, 255, 0.34) 100%);
 }
 
 .bot-context-chip strong {
-  font-size: 1rem;
+  font-size: 0.96rem;
 }
 
 .bot-context-chip span {
   color: var(--text-soft);
-  font-size: 0.76rem;
+  font-size: 0.72rem;
 }
 
 .bot-suggestions {
   display: flex;
   gap: 8px;
   overflow: auto;
-  padding-bottom: 2px;
+  padding: 2px 0 4px;
+  margin: -2px 0 0;
 }
 
 .bot-suggestion-chip {
   flex: 0 0 auto;
-  padding: 8px 12px;
+  padding: 7px 12px;
   border-radius: 999px;
   border: 1px solid var(--line);
-  background: rgba(255, 255, 255, 0.56);
+  background: rgba(255, 255, 255, 0.42);
   color: var(--text);
+  font-size: 0.82rem;
 }
 
 .bot-suggestion-chip:hover {
@@ -716,13 +704,14 @@ small {
   overflow: auto;
   display: grid;
   gap: 10px;
-  padding-right: 2px;
-  min-height: 180px;
+  padding: 2px 2px 2px 0;
+  min-height: 240px;
+  max-height: 320px;
 }
 
 .bot-message {
   padding: 12px 14px;
-  border-radius: 20px;
+  border-radius: 18px;
   line-height: 1.55;
   border: 1px solid var(--line);
 }
@@ -733,7 +722,7 @@ small {
 
 .bot-message.user {
   background: rgba(92, 32, 56, 0.08);
-  margin-left: 32px;
+  margin-left: 36px;
 }
 
 .bot-message-meta {
@@ -751,7 +740,7 @@ small {
 
 .bot-form {
   display: grid;
-  gap: 10px;
+  gap: 8px;
 }
 
 .bot-composer {
@@ -760,36 +749,43 @@ small {
   padding: 12px;
   border: 1px solid var(--line);
   border-radius: 18px;
-  background: rgba(255, 255, 255, 0.42);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.5) 0%, rgba(255, 255, 255, 0.34) 100%);
 }
 
 .bot-input {
-  min-height: 72px;
-  border-radius: 16px;
+  min-height: 88px;
+  border-radius: 14px;
   border: none;
-  background: rgba(255, 255, 255, 0.18);
-  padding: 0;
+  background: rgba(255, 255, 255, 0.1);
+  padding: 2px 0 0;
 }
 
 .bot-composer-row {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
-  justify-content: space-between;
   gap: 10px;
 }
 
 .bot-attach {
   position: relative;
-  display: inline-flex;
+  display: flex;
   align-items: center;
   gap: 8px;
-  padding: 8px 12px;
-  border-radius: 999px;
+  min-width: 0;
+  padding: 9px 12px;
+  border-radius: 14px;
   border: 1px solid var(--line);
   background: rgba(255, 255, 255, 0.62);
   color: var(--text-soft);
   cursor: pointer;
   overflow: hidden;
+}
+
+.bot-attach span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .bot-attach input {
@@ -800,7 +796,8 @@ small {
 }
 
 .bot-send-button {
-  min-width: 120px;
+  min-width: 112px;
+  align-self: stretch;
 }
 
 .tenant-modal {
@@ -927,10 +924,11 @@ small {
   .bot-panel.floating {
     right: 16px;
     bottom: 16px;
-    width: min(360px, calc(100vw - 32px));
+    width: min(380px, calc(100vw - 32px));
   }
 
   .bot-context-strip {
+    display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
@@ -968,6 +966,10 @@ small {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .bot-context-chip {
+    min-width: 0;
+  }
+
   .page-header {
     flex-direction: column;
   }
@@ -996,7 +998,17 @@ small {
   }
 
   .bot-composer-row {
-    flex-direction: column;
-    align-items: stretch;
+    grid-template-columns: 1fr;
+  }
+
+  .bot-panel.floating {
+    right: 12px;
+    bottom: 12px;
+    width: calc(100vw - 24px);
+    max-height: calc(100vh - 92px);
+  }
+
+  .bot-send-button {
+    width: 100%;
   }
 }
