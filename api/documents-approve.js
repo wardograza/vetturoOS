@@ -6,8 +6,106 @@ function numberOrNull(value) {
     return null;
   }
 
-  const parsed = Number(String(value).replace(/,/g, ""));
+  const normalized = String(value).trim();
+  if (!normalized || normalized === "-" || normalized.toLowerCase() === "na" || normalized.toLowerCase() === "n/a") {
+    return null;
+  }
+
+  const parsed = Number(normalized.replace(/,/g, "").replace(/%/g, ""));
   return Number.isFinite(parsed) ? parsed : null;
+}
+
+function textOrNull(value) {
+  if (value === null || value === undefined) {
+    return null;
+  }
+
+  const normalized = String(value).trim();
+  if (!normalized || normalized === "-" || normalized.toLowerCase() === "na" || normalized.toLowerCase() === "n/a") {
+    return null;
+  }
+
+  return normalized;
+}
+
+function dateOrNull(value) {
+  const normalized = textOrNull(value);
+  if (!normalized) {
+    return null;
+  }
+
+  if (/^\d{4}-\d{2}-\d{2}$/.test(normalized)) {
+    return normalized;
+  }
+
+  const dashMatch = normalized.match(/^(\d{1,2})-(\d{1,2})-(\d{4})$/);
+  if (dashMatch) {
+    const [, day, month, year] = dashMatch;
+    return `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
+  }
+
+  const slashMatch = normalized.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (slashMatch) {
+    const [, dayOrMonth, monthOrDay, year] = slashMatch;
+    const first = Number(dayOrMonth);
+    const second = Number(monthOrDay);
+    const day = first > 12 ? first : second;
+    const month = first > 12 ? second : first;
+    return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+  }
+
+  const parsed = new Date(normalized);
+  if (Number.isNaN(parsed.getTime())) {
+    return null;
+  }
+
+  return parsed.toISOString().slice(0, 10);
+}
+
+function buildTenantUpsertPayload(tenantPayload, extra = {}) {
+  return {
+    brand_name: textOrNull(tenantPayload.Brand_Name),
+    unit_code: textOrNull(tenantPayload.Unit_Code) || "Unassigned",
+    rent_amount: numberOrNull(tenantPayload.MG_Rent_Monthly) ?? 0,
+    parent_company: textOrNull(tenantPayload.Parent_Company),
+    category_primary: textOrNull(tenantPayload.Category_Primary),
+    category_secondary: textOrNull(tenantPayload.Category_Secondary),
+    brand_grade: textOrNull(tenantPayload.Brand_Grade),
+    brand_poc_name: textOrNull(tenantPayload.Brand_POC_Name),
+    brand_poc_email: textOrNull(tenantPayload.Brand_POC_Email),
+    store_manager_name: textOrNull(tenantPayload.Store_Manager_Name),
+    store_manager_phone: textOrNull(tenantPayload.Store_Manager_Phone),
+    billing_contact_email: textOrNull(tenantPayload.Billing_Contact_Email),
+    nexus_leasing_lead: textOrNull(tenantPayload.Nexus_Leasing_Lead),
+    store_format: textOrNull(tenantPayload.Store_Format),
+    target_audience: textOrNull(tenantPayload.Target_Audience),
+    avg_transaction_value: numberOrNull(tenantPayload.Avg_Transaction_Value),
+    annual_marketing_spend: numberOrNull(tenantPayload.Annual_Marketing_Spend),
+    usp_description: textOrNull(tenantPayload.USP_Description),
+    expansion_history: textOrNull(tenantPayload.Expansion_History),
+    lease_start_date: dateOrNull(tenantPayload.Lease_Start_Date),
+    lease_expiry_date: dateOrNull(tenantPayload.Lease_Expiry_Date),
+    lock_in_expiry: dateOrNull(tenantPayload.Lock_in_Expiry),
+    mg_rent_monthly: numberOrNull(tenantPayload.MG_Rent_Monthly),
+    gto_percent: numberOrNull(tenantPayload.GTO_Percent),
+    escalation_freq_months: numberOrNull(tenantPayload.Escalation_Freq_Months),
+    escalation_percent: numberOrNull(tenantPayload.Escalation_Percent),
+    last_escalation_date: dateOrNull(tenantPayload.Last_Escalation_Date),
+    security_deposit: numberOrNull(tenantPayload.Security_Deposit),
+    cam_rate_sqft: numberOrNull(tenantPayload.CAM_Rate_SqFt),
+    utility_meter_id: textOrNull(tenantPayload.Utility_Meter_ID),
+    unit_gla_sba: numberOrNull(tenantPayload.Unit_GLA_SBA),
+    power_load_kva: numberOrNull(tenantPayload.Power_Load_kVA),
+    gas_connection_yn: textOrNull(tenantPayload.Gas_Connection_YN),
+    water_inlet_yn: textOrNull(tenantPayload.Water_Inlet_YN),
+    exhaust_provision_yn: textOrNull(tenantPayload.Exhaust_Provision_YN),
+    signage_type: textOrNull(tenantPayload.Signage_Type),
+    insurance_expiry: dateOrNull(tenantPayload.Insurance_Expiry),
+    trade_license_expiry: dateOrNull(tenantPayload.Trade_License_Expiry),
+    last_audit_score: numberOrNull(tenantPayload.Last_Audit_Score),
+    source_payload: tenantPayload,
+    ...extra,
+  };
 }
 
 function conflictEntries(existing, incoming) {
@@ -168,36 +266,15 @@ export default async function handler(req, res) {
 
         for (const tenantPayload of tenantPayloads) {
           const missing = findMissingFields(tenantPayload, tenantRequiredFields);
+          const upsertResult = await admin
+            .from("tenant_profiles")
+            .upsert(buildTenantUpsertPayload(tenantPayload));
 
-          await admin.from("tenant_profiles").upsert({
-            brand_name: tenantPayload.Brand_Name,
-            unit_code: tenantPayload.Unit_Code,
-            rent_amount: numberOrNull(tenantPayload.MG_Rent_Monthly),
-            parent_company: tenantPayload.Parent_Company || null,
-            category_primary: tenantPayload.Category_Primary || null,
-            category_secondary: tenantPayload.Category_Secondary || null,
-            brand_grade: tenantPayload.Brand_Grade || null,
-            brand_poc_name: tenantPayload.Brand_POC_Name || null,
-            brand_poc_email: tenantPayload.Brand_POC_Email || null,
-            store_manager_name: tenantPayload.Store_Manager_Name || null,
-            store_manager_phone: tenantPayload.Store_Manager_Phone || null,
-            billing_contact_email: tenantPayload.Billing_Contact_Email || null,
-            nexus_leasing_lead: tenantPayload.Nexus_Leasing_Lead || null,
-            lease_start_date: tenantPayload.Lease_Start_Date || null,
-            lease_expiry_date: tenantPayload.Lease_Expiry_Date || null,
-            mg_rent_monthly: numberOrNull(tenantPayload.MG_Rent_Monthly),
-            gto_percent: numberOrNull(tenantPayload.GTO_Percent),
-            security_deposit: numberOrNull(tenantPayload.Security_Deposit),
-            unit_gla_sba: numberOrNull(tenantPayload.Unit_GLA_SBA),
-            power_load_kva: numberOrNull(tenantPayload.Power_Load_kVA),
-            gas_connection_yn: tenantPayload.Gas_Connection_YN || null,
-            water_inlet_yn: tenantPayload.Water_Inlet_YN || null,
-            exhaust_provision_yn: tenantPayload.Exhaust_Provision_YN || null,
-            insurance_expiry: tenantPayload.Insurance_Expiry || null,
-            trade_license_expiry: tenantPayload.Trade_License_Expiry || null,
-            last_audit_score: numberOrNull(tenantPayload.Last_Audit_Score),
-            source_payload: tenantPayload,
-          });
+          if (upsertResult.error) {
+            throw new Error(
+              `Tenant onboarding failed for ${tenantPayload.Brand_Name || "an unknown brand"} (${tenantPayload.Unit_Code || "no unit"}). ${upsertResult.error.message}`,
+            );
+          }
 
           await admin.from("document_memory_entries").insert({
             document_id: document.id,
@@ -247,34 +324,24 @@ export default async function handler(req, res) {
           continue;
         }
 
-        await admin.from("tenant_profiles").upsert({
-          brand_name: tenantPayload.Brand_Name,
-          unit_code: tenantPayload.Unit_Code || "Unassigned",
-          rent_amount: numberOrNull(tenantPayload.MG_Rent_Monthly),
-          parent_company: tenantPayload.Parent_Company || null,
-          category_primary: tenantPayload.Category_Primary || null,
-          category_secondary: tenantPayload.Category_Secondary || null,
-          lease_start_date: tenantPayload.Lease_Start_Date || null,
-          lease_expiry_date: tenantPayload.Lease_Expiry_Date || null,
-          mg_rent_monthly: numberOrNull(tenantPayload.MG_Rent_Monthly),
-          gto_percent: numberOrNull(tenantPayload.GTO_Percent),
-          security_deposit: numberOrNull(tenantPayload.Security_Deposit),
-          unit_gla_sba: numberOrNull(tenantPayload.Unit_GLA_SBA),
-          power_load_kva: numberOrNull(tenantPayload.Power_Load_kVA),
-          gas_connection_yn: tenantPayload.Gas_Connection_YN || null,
-          water_inlet_yn: tenantPayload.Water_Inlet_YN || null,
-          exhaust_provision_yn: tenantPayload.Exhaust_Provision_YN || null,
-          insurance_expiry: tenantPayload.Insurance_Expiry || null,
-          trade_license_expiry: tenantPayload.Trade_License_Expiry || null,
-          last_audit_score:
-            numberOrNull(brandStatsByName.get(String(tenantPayload.Brand_Name || "").trim().toLowerCase())?.["Health Ratio"]) ??
-            numberOrNull(tenantPayload.Last_Audit_Score),
-          source_payload: {
-            ...tenantPayload,
-            brandStats: brandStatsByName.get(String(tenantPayload.Brand_Name || "").trim().toLowerCase()) || null,
-            financeWorkbook: true,
-          },
-        });
+        const upsertResult = await admin.from("tenant_profiles").upsert(
+          buildTenantUpsertPayload(tenantPayload, {
+            last_audit_score:
+              numberOrNull(brandStatsByName.get(String(tenantPayload.Brand_Name || "").trim().toLowerCase())?.["Health Ratio"]) ??
+              numberOrNull(tenantPayload.Last_Audit_Score),
+            source_payload: {
+              ...tenantPayload,
+              brandStats: brandStatsByName.get(String(tenantPayload.Brand_Name || "").trim().toLowerCase()) || null,
+              financeWorkbook: true,
+            },
+          }),
+        );
+
+        if (upsertResult.error) {
+          throw new Error(
+            `Finance workbook ingest failed for ${tenantPayload.Brand_Name || "an unknown brand"} (${tenantPayload.Unit_Code || "no unit"}). ${upsertResult.error.message}`,
+          );
+        }
       }
 
       await admin.from("document_memory_entries").insert({
@@ -306,35 +373,13 @@ export default async function handler(req, res) {
 
       const missing = findMissingFields(payload, tenantRequiredFields);
 
-      await admin.from("tenant_profiles").upsert({
-        brand_name: payload.Brand_Name,
-        unit_code: payload.Unit_Code,
-        rent_amount: numberOrNull(payload.MG_Rent_Monthly),
-        parent_company: payload.Parent_Company || null,
-        category_primary: payload.Category_Primary || null,
-        category_secondary: payload.Category_Secondary || null,
-        brand_grade: payload.Brand_Grade || null,
-        brand_poc_name: payload.Brand_POC_Name || null,
-        brand_poc_email: payload.Brand_POC_Email || null,
-        store_manager_name: payload.Store_Manager_Name || null,
-        store_manager_phone: payload.Store_Manager_Phone || null,
-        billing_contact_email: payload.Billing_Contact_Email || null,
-        nexus_leasing_lead: payload.Nexus_Leasing_Lead || null,
-        lease_start_date: payload.Lease_Start_Date || null,
-        lease_expiry_date: payload.Lease_Expiry_Date || null,
-        mg_rent_monthly: numberOrNull(payload.MG_Rent_Monthly),
-        gto_percent: numberOrNull(payload.GTO_Percent),
-        security_deposit: numberOrNull(payload.Security_Deposit),
-        unit_gla_sba: numberOrNull(payload.Unit_GLA_SBA),
-        power_load_kva: numberOrNull(payload.Power_Load_kVA),
-        gas_connection_yn: payload.Gas_Connection_YN || null,
-        water_inlet_yn: payload.Water_Inlet_YN || null,
-        exhaust_provision_yn: payload.Exhaust_Provision_YN || null,
-        insurance_expiry: payload.Insurance_Expiry || null,
-        trade_license_expiry: payload.Trade_License_Expiry || null,
-        last_audit_score: numberOrNull(payload.Last_Audit_Score),
-        source_payload: payload,
-      });
+      const upsertResult = await admin.from("tenant_profiles").upsert(buildTenantUpsertPayload(payload));
+
+      if (upsertResult.error) {
+        throw new Error(
+          `Tenant memory approval failed for ${payload.Brand_Name || "an unknown brand"} (${payload.Unit_Code || "no unit"}). ${upsertResult.error.message}`,
+        );
+      }
 
       await admin.from("document_memory_entries").insert({
         document_id: document.id,
