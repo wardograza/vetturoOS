@@ -1,4 +1,4 @@
-import { admin, readJsonBody, sendJson } from "./_lib/supabase.js";
+import { admin, getUserFromBearerToken, readJsonBody, sendJson } from "./_lib/supabase.js";
 import { findMissingFields, organizationRequiredFields, tenantRequiredFields } from "./_lib/workbook.js";
 
 function numberOrNull(value) {
@@ -163,6 +163,7 @@ export default async function handler(req, res) {
 
   try {
     const body = await readJsonBody(req);
+    const user = await getUserFromBearerToken(req);
     const { data: document, error: documentError } = await admin
       .from("documents")
       .select("*")
@@ -439,6 +440,8 @@ export default async function handler(req, res) {
         status: "approved",
         is_in_core_memory: true,
         conflict_count: conflicts.length,
+        approved_by: user?.id || null,
+        approved_at: new Date().toISOString(),
       })
       .eq("id", body.documentId);
 

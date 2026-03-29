@@ -106,6 +106,28 @@ export default async function handler(req, res) {
       : [];
 
     const normalized = message.toLowerCase();
+    if ((normalized.includes("approv") || normalized.includes("approved by") || normalized.includes("who approved")) && documents.length > 0) {
+      const recentApprovedDocument = [...documents]
+        .filter((document) => document.status === "approved")
+        .sort(
+          (left, right) =>
+            new Date(right.approved_at || right.uploaded_at || 0).getTime() -
+            new Date(left.approved_at || left.uploaded_at || 0).getTime(),
+        )[0];
+
+      if (recentApprovedDocument) {
+        const approverName =
+          profiles.find((profile) => profile.id === recentApprovedDocument.approved_by)?.full_name || null;
+
+        return sendJson(res, 200, {
+          reply: approverName
+            ? `${recentApprovedDocument.file_name} was approved by ${approverName}${recentApprovedDocument.approved_at ? ` on ${new Date(recentApprovedDocument.approved_at).toLocaleString("en-IN")}` : ""}.`
+            : `${recentApprovedDocument.file_name} is approved, but the approver name was not stored on that document record.`,
+          action: { page: "Approvals" },
+        });
+      }
+    }
+
     const rows = tenantProfiles.length > 0
       ? tenantProfiles.map((row) => ({
           brandName: row.brand_name,

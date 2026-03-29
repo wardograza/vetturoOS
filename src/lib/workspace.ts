@@ -309,7 +309,7 @@ export async function fetchWorkspaceData(accessToken?: string): Promise<Workspac
     ),
     safeSelect<Record<string, unknown>>(
       "documents",
-      "id, file_name, storage_path, document_type, domain_category, sub_category, purpose_summary, status, parser_summary, is_in_core_memory, conflict_count, uploaded_at, source_payload",
+      "id, file_name, storage_path, document_type, domain_category, sub_category, purpose_summary, status, parser_summary, is_in_core_memory, conflict_count, uploaded_at, approved_at, approved_by, source_payload",
     ),
     safeSelect<Record<string, unknown>>(
       "decision_dna_scores",
@@ -360,22 +360,6 @@ export async function fetchWorkspaceData(accessToken?: string): Promise<Workspac
     createdAt: (row.created_at as string | null) ?? null,
   }));
 
-  const documents: DocumentRecord[] = documentsResult.data.map((row) => ({
-    id: String(row.id),
-    fileName: String(row.file_name),
-    storagePath: String(row.storage_path),
-    documentType: String(row.document_type),
-    domainCategory: (row.domain_category as string | null) ?? null,
-    subCategory: (row.sub_category as string | null) ?? null,
-    purposeSummary: (row.purpose_summary as string | null) ?? null,
-    status: String(row.status),
-    parserSummary: (row.parser_summary as string | null) ?? null,
-    isInCoreMemory: Boolean(row.is_in_core_memory),
-    conflictCount: toNumber(row.conflict_count) ?? 0,
-    uploadedAt: (row.uploaded_at as string | null) ?? null,
-    sourcePayload: (row.source_payload as Record<string, unknown> | null) ?? null,
-  }));
-
   const decisionDna: DecisionDnaRecord[] = dnaResult.data.map((row) => ({
     id: String(row.id),
     candidateBrandName: String(row.candidate_brand_name),
@@ -411,6 +395,24 @@ export async function fetchWorkspaceData(accessToken?: string): Promise<Workspac
   }));
 
   const profileNameById = new Map(profiles.map((profile) => [profile.id, profile.fullName]));
+  const documents: DocumentRecord[] = documentsResult.data.map((row) => ({
+    id: String(row.id),
+    fileName: String(row.file_name),
+    storagePath: String(row.storage_path),
+    documentType: String(row.document_type),
+    domainCategory: (row.domain_category as string | null) ?? null,
+    subCategory: (row.sub_category as string | null) ?? null,
+    purposeSummary: (row.purpose_summary as string | null) ?? null,
+    status: String(row.status),
+    parserSummary: (row.parser_summary as string | null) ?? null,
+    isInCoreMemory: Boolean(row.is_in_core_memory),
+    conflictCount: toNumber(row.conflict_count) ?? 0,
+    uploadedAt: (row.uploaded_at as string | null) ?? null,
+    approvedAt: (row.approved_at as string | null) ?? null,
+    approvedById: (row.approved_by as string | null) ?? null,
+    approvedByName: profileNameById.get(String(row.approved_by ?? "")) ?? null,
+    sourcePayload: (row.source_payload as Record<string, unknown> | null) ?? null,
+  }));
   const taskEventsByTaskId = new Map<string, {
     id: string;
     eventType: string;

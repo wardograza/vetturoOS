@@ -68,7 +68,9 @@ begin
       add column if not exists sub_category text,
       add column if not exists purpose_summary text,
       add column if not exists source_payload jsonb,
-      add column if not exists conflict_count integer not null default 0;
+      add column if not exists conflict_count integer not null default 0,
+      add column if not exists approved_by uuid references auth.users(id) on delete set null,
+      add column if not exists approved_at timestamptz;
 
     if exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'documents' and column_name = 'mall_id') then
       alter table public.documents alter column mall_id drop not null;

@@ -153,7 +153,7 @@ export default async function handler(req, res) {
           admin.from("tenant_profiles").select("id, brand_name, unit_code, rent_amount, parent_company, category_primary, category_secondary, brand_grade, brand_poc_name, brand_poc_email, store_manager_name, store_manager_phone, billing_contact_email, nexus_leasing_lead, lease_start_date, lease_expiry_date, mg_rent_monthly, gto_percent, security_deposit, unit_gla_sba, power_load_kva, gas_connection_yn, water_inlet_yn, exhaust_provision_yn, insurance_expiry, trade_license_expiry, last_audit_score, source_payload"),
           admin.from("tenants").select("tenant_name, unit_number, rent"),
           admin.from("communications").select("id, recipient_name, recipient_email, recipient_phone, channel, purpose, subject, body_preview, current_status, escalation_level, requires_action, sla_due_at, created_at"),
-          admin.from("documents").select("id, file_name, storage_path, document_type, domain_category, sub_category, purpose_summary, status, parser_summary, is_in_core_memory, conflict_count, uploaded_at, source_payload"),
+          admin.from("documents").select("id, file_name, storage_path, document_type, domain_category, sub_category, purpose_summary, status, parser_summary, is_in_core_memory, conflict_count, uploaded_at, approved_at, approved_by, source_payload"),
           admin.from("decision_dna_scores").select("id, candidate_brand_name, category, category_synergy, technical_fit, financial_health, cannibalization_risk, total_score, recommendation, research_summary, target_unit, replacement_brand, demand_signals, sources"),
           admin.from("profiles").select("id, email, full_name, username, role, phone_number, permissions, must_reset_password, is_active"),
           admin.from("user_invites").select("id, full_name, username, email, phone_number, role, permissions, expires_at, accepted_at"),
@@ -275,6 +275,9 @@ export default async function handler(req, res) {
             isInCoreMemory: Boolean(row.is_in_core_memory),
             conflictCount: toNumber(row.conflict_count) ?? 0,
             uploadedAt: row.uploaded_at ?? null,
+            approvedAt: row.approved_at ?? null,
+            approvedById: row.approved_by ?? null,
+            approvedByName: profileNameById.get(String(row.approved_by ?? "")) ?? null,
             sourcePayload: row.source_payload ?? null,
           })),
           decisionDna: (dnaResult.data || []).map((row) => ({

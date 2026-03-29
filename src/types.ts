@@ -134,6 +134,9 @@ export interface DocumentRecord {
   isInCoreMemory: boolean;
   conflictCount: number;
   uploadedAt: string | null;
+  approvedAt: string | null;
+  approvedById: string | null;
+  approvedByName: string | null;
   sourcePayload: Record<string, unknown> | null;
 }
 
