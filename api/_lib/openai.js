@@ -1,3 +1,31 @@
+function extractOutputText(responseJson) {
+  if (typeof responseJson.output_text === "string" && responseJson.output_text.trim()) {
+    return responseJson.output_text;
+  }
+
+  if (Array.isArray(responseJson.output)) {
+    const chunks = [];
+
+    responseJson.output.forEach((item) => {
+      if (Array.isArray(item?.content)) {
+        item.content.forEach((content) => {
+          if (typeof content?.text === "string" && content.text.trim()) {
+            chunks.push(content.text);
+          } else if (typeof content?.output_text === "string" && content.output_text.trim()) {
+            chunks.push(content.output_text);
+          }
+        });
+      }
+    });
+
+    if (chunks.length > 0) {
+      return chunks.join("\n").trim();
+    }
+  }
+
+  return "";
+}
+
 export async function callOpenAI({ system, input, responseFormat = "text", model = "gpt-4.1-mini", tools, toolChoice }) {
   const apiKey = process.env.OPENAI_API_KEY;
 
@@ -42,7 +70,7 @@ export async function callOpenAI({ system, input, responseFormat = "text", model
   }
 
   const json = await response.json();
-  return json.output_text ?? "";
+  return extractOutputText(json);
 }
 
 export function classifyDocumentFallback({ fileName = "", notes = "" }) {

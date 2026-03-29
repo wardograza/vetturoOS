@@ -734,9 +734,14 @@ function App() {
     };
   }, []);
 
-  async function loadWorkspace() {
-    setWorkspaceLoading(true);
-    setWorkspaceError(null);
+  async function loadWorkspace(options?: { silent?: boolean }) {
+    const silent = Boolean(options?.silent);
+    if (!silent || !workspace) {
+      setWorkspaceLoading(true);
+    }
+    if (!silent) {
+      setWorkspaceError(null);
+    }
 
     try {
       const data = await fetchWorkspaceData(session?.access_token);
@@ -804,7 +809,7 @@ function App() {
 
     const refreshMinutes = configDraft.dataRefreshMinutes || 30;
     const interval = window.setInterval(() => {
-      void loadWorkspace();
+      void loadWorkspace({ silent: true });
     }, Math.max(refreshMinutes, 15) * 60 * 1000);
 
     return () => window.clearInterval(interval);
