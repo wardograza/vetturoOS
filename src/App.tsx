@@ -3496,9 +3496,14 @@ function MetricCard({ label, value, note }: { label: string; value: string; note
 
 function InfoHint({ text }: { text: string }) {
   return (
-    <span className="info-hint" tabIndex={0}>
+    <span
+      aria-label={text}
+      className="info-hint"
+      role="img"
+      tabIndex={0}
+      title={text}
+    >
       i
-      <span className="info-hint-bubble">{text}</span>
     </span>
   );
 }

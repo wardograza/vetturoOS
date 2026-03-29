@@ -355,7 +355,6 @@ small {
 }
 
 .info-hint {
-  position: relative;
   display: inline-flex;
   flex: 0 0 auto;
   width: 15px;
@@ -369,32 +368,6 @@ small {
   line-height: 1;
   background: rgba(255, 255, 255, 0.5);
   cursor: help;
-}
-
-.info-hint-bubble {
-  position: absolute;
-  left: -4px;
-  top: calc(100% + 8px);
-  z-index: 12;
-  width: 180px;
-  padding: 8px 10px;
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  background: var(--surface-strong);
-  color: var(--text);
-  box-shadow: var(--shadow-soft);
-  opacity: 0;
-  pointer-events: none;
-  font-size: 0.72rem;
-  line-height: 1.35;
-  transform: translateY(-4px);
-  transition: opacity 140ms ease, transform 140ms ease;
-}
-
-.info-hint:hover .info-hint-bubble,
-.info-hint:focus .info-hint-bubble {
-  opacity: 1;
-  transform: translateY(0);
 }
 
 .metric-card strong {
