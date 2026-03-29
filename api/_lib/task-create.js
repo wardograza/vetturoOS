@@ -118,8 +118,8 @@ export async function createTaskRecord({ admin, actorId, body }) {
         .maybeSingle();
 
       const taskId = createdTask.data?.id || null;
-      let finalAssignedToId = (createdTask.data?.assigned_to as string | null) || null;
-      let finalStatus = (createdTask.data?.status as string | null) || "open";
+      let finalAssignedToId = createdTask.data?.assigned_to || null;
+      let finalStatus = createdTask.data?.status || "open";
 
       if (taskId && assignee && !finalAssignedToId && !variant.keepsAssignment) {
         const assignResult = await admin
