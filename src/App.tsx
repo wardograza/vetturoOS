@@ -926,12 +926,30 @@ function App() {
     const auditCoverage = tenants.filter((tenant) => typeof tenant.lastAuditScore === "number").length;
     const facilitiesTasks = tasks.filter((task) => (task.department || "").toLowerCase() === "facilities").length;
     const financeRelevant = communications.filter((item) => (item.purpose || "").toLowerCase().includes("recovery")).length;
+    const p1Tasks = tasks.filter((task) => String(task.priority || "").toUpperCase() === "P1").length;
+    const proofRequired = tasks.filter((task) => task.proofRequired).length;
+    const approvedDocuments = documents.filter((document) => document.isInCoreMemory).length;
+    const missingCategory = tenants.filter((tenant) => !tenant.categoryPrimary).length;
+    const categoryCounts = tenants.reduce<Map<string, number>>((map, tenant) => {
+      const key = tenant.categoryPrimary || "Unclassified";
+      map.set(key, (map.get(key) || 0) + 1);
+      return map;
+    }, new Map());
+    const topCategory = [...categoryCounts.entries()].sort((left, right) => right[1] - left[1])[0] || null;
+    const leaseCoverage = tenants.length > 0 ? Math.round(((tenants.length - missingLeaseExpiry) / tenants.length) * 100) : 0;
+    const avgArea = tenants.length > 0
+      ? Math.round(
+          tenants.reduce((sum, tenant) => sum + (tenant.unitGlaSba || 0), 0) /
+            Math.max(tenants.filter((tenant) => tenant.unitGlaSba).length, 1),
+        )
+      : 0;
 
     switch (currentProfile?.role) {
       case "finance":
         return [
           getDerivedMetric("Tracked Rent Base", formatCompactCurrency(revenueSummary.total), "Live rent mapped from approved tenant and finance records"),
           getDerivedMetric("Average Rent", formatCompactCurrency(revenueSummary.average), "Average across currently stored tenant records"),
+          getDerivedMetric("Top Rent Cluster", topCategory ? `${topCategory[0]} (${topCategory[1]})` : "Need category data", topCategory ? "Largest current category cluster in the tenant master" : "Upload category values to calculate this"),
           getDerivedMetric(
             "Recovery Threads",
             String(financeRelevant),
@@ -942,6 +960,7 @@ function App() {
             String(missingLeaseExpiry),
             missingLeaseExpiry > 0 ? "Add lease expiry dates to improve renewal and escalation finance logic" : "Lease expiry coverage is available",
           ),
+          getDerivedMetric("Lease Coverage", `${leaseCoverage}%`, tenants.length > 0 ? "Share of tenant rows with lease expiry currently stored" : "Upload tenant rows to calculate this"),
         ];
       case "leasing_manager":
         return [
@@ -953,6 +972,8 @@ function App() {
           ),
           getDerivedMetric("Decision DNA Entries", String(leasingIntel.length), leasingIntel.length > 0 ? "Live leasing evaluations stored" : "Need brand-vetting inputs to calculate this"),
           getDerivedMetric("Pending Approvals", String(pendingDocuments.length), "Documents waiting to be admitted into memory"),
+          getDerivedMetric("Top Category", topCategory ? topCategory[0] : "Need category data", topCategory ? `${topCategory[1]} brands currently mapped` : "Upload category values to calculate this"),
+          getDerivedMetric("Missing Category Tags", String(missingCategory), missingCategory > 0 ? "Add primary categories to improve mix and adjacency logic" : "Category tagging is available"),
         ];
       case "facilities":
         return [
@@ -960,6 +981,8 @@ function App() {
           getDerivedMetric("Facilities Tasks", String(facilitiesTasks), facilitiesTasks > 0 ? "Tasks routed to facilities" : "Need facilities tasks to calculate this"),
           getDerivedMetric("Proof Required", String(tasks.filter((task) => task.proofRequired).length), "Tasks expecting evidence on closure"),
           getDerivedMetric("Audit Coverage", `${auditCoverage}/${tenants.length}`, auditCoverage > 0 ? "Brand audit data currently stored" : "Need brand audit or compliance scores to calculate this"),
+          getDerivedMetric("P1 Escalations", String(p1Tasks), p1Tasks > 0 ? "Highest-priority issues in the live queue" : "No P1 work is currently in the system"),
+          getDerivedMetric("Avg Area", avgArea ? `${avgArea}` : "Need area data", avgArea ? "Average mapped unit area across current tenant rows" : "Upload unit area values to calculate this"),
         ];
       case "mall_manager":
         return [
@@ -967,6 +990,8 @@ function App() {
           getDerivedMetric("Open Tasks", String(tasks.length), "Operational items across departments"),
           getDerivedMetric("Pending Approvals", String(pendingDocuments.length), "Documents waiting on super admin action"),
           getDerivedMetric("Tracked Communications", String(communications.length), communications.length > 0 ? "Communication threads are active" : "Need outgoing communication records to calculate this"),
+          getDerivedMetric("In-Core Documents", String(approvedDocuments), approvedDocuments > 0 ? "Approved docs currently shaping live memory" : "Approve vault documents to build core memory"),
+          getDerivedMetric("Lease Coverage", `${leaseCoverage}%`, tenants.length > 0 ? "Share of brands with lease expiry data currently stored" : "Upload tenant rows to calculate this"),
         ];
       default:
         return [
@@ -974,9 +999,65 @@ function App() {
           getDerivedMetric("Tracked Rent Base", formatCompactCurrency(revenueSummary.total), "Live rent mapped from tenant records"),
           getDerivedMetric("Pending Approvals", String(pendingDocuments.length), "Documents waiting to enter core memory"),
           getDerivedMetric("Open Tasks", String(tasks.length), "Operational queue across teams"),
+          getDerivedMetric("Top Category", topCategory ? topCategory[0] : "Need category data", topCategory ? `${topCategory[1]} mapped brands in the largest cluster` : "Upload category values to calculate this"),
+          getDerivedMetric("Proof Required", String(proofRequired), proofRequired > 0 ? "Tasks expecting evidence before closure" : "No proof-gated tasks are active"),
         ];
     }
-  }, [communications.length, currentProfile?.role, leasingIntel.length, pendingDocuments.length, revenueSummary.average, revenueSummary.total, tasks, tenants]);
+  }, [communications.length, currentProfile?.role, documents, leasingIntel.length, pendingDocuments.length, revenueSummary.average, revenueSummary.total, tasks, tenants]);
+
+  const copilotContextItems = useMemo(
+    () => [
+      {
+        label: "Tenants",
+        value: String(tenants.length),
+      },
+      {
+        label: "Tasks",
+        value: String(tasks.length),
+      },
+      {
+        label: "Memory",
+        value: String(documents.filter((document) => document.isInCoreMemory).length),
+      },
+      {
+        label: "Approvals",
+        value: String(pendingDocuments.length),
+      },
+    ],
+    [documents, pendingDocuments.length, tasks.length, tenants.length],
+  );
+
+  const copilotSuggestions = useMemo(() => {
+    if (activePage === "Tasks") {
+      return [
+        "Create a P2 facilities task for signage outage near west atrium",
+        "Show my overdue operational tasks",
+        "Which department has the highest open task load?",
+      ];
+    }
+
+    if (activePage === "Leasing Intel") {
+      return [
+        "Research Westside as a fit for this mall",
+        "Which expiring brands are weakest replacements?",
+        "Summarize category gaps in the current tenant mix",
+      ];
+    }
+
+    if (activePage === "Document Vault" || activePage === "Approvals") {
+      return [
+        "What onboarding fields are still missing?",
+        "Classify this upload and tell me where it belongs",
+        "Which approved documents are shaping tenant memory?",
+      ];
+    }
+
+    return [
+      "Which tenants still have onboarding gaps?",
+      "Show me expiring leases in the next 90 days",
+      "Create a task for a water leakage near Gucci",
+    ];
+  }, [activePage]);
 
   const visibleTaskRecords = useMemo(() => {
     const permissions = currentProfile?.permissions ?? [];
@@ -1970,39 +2051,69 @@ function App() {
             <div>
               <p className="panel-kicker">Vetturo</p>
               <h3>Copilot</h3>
+              <p className="bot-subtitle">Grounded in live mall data, approved memory, and workflow actions.</p>
             </div>
+            <span className="bot-status-pill">Live workspace</span>
+          </div>
+
+          <div className="bot-context-strip">
+            {copilotContextItems.map((item) => (
+              <div className="bot-context-chip" key={item.label}>
+                <strong>{item.value}</strong>
+                <span>{item.label}</span>
+              </div>
+            ))}
+          </div>
+
+          <div className="bot-suggestions">
+            {copilotSuggestions.map((suggestion) => (
+              <button
+                className="bot-suggestion-chip"
+                key={suggestion}
+                onClick={() => setBotInput(suggestion)}
+                type="button"
+              >
+                {suggestion}
+              </button>
+            ))}
           </div>
 
           <div className="bot-body">
             {botMessages.map((message) => (
               <div className={`bot-message ${message.role}`} key={message.id}>
-                {message.text}
+                <div className="bot-message-meta">
+                  <span>{message.role === "assistant" ? "Vetturo" : "You"}</span>
+                </div>
+                <div className="bot-message-copy">{message.text}</div>
               </div>
             ))}
           </div>
 
           <form className="bot-form" onSubmit={handleBotSubmit}>
-            <textarea
-              className="bot-input"
-              value={botInput}
-              onChange={(event) => setBotInput(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter" && !event.shiftKey) {
-                  event.preventDefault();
-                  void handleBotSubmit(event);
-                }
-              }}
-              placeholder="Ask for revenue numbers, missing onboarding data, or operational help."
-              rows={4}
-            />
-            <label className="field">
-              <span>Attach file</span>
-              <input type="file" accept=".pdf,.xlsx,.xls,.csv" onChange={(event) => setBotAttachment(event.target.files?.[0] || null)} />
-              <small>{botAttachment ? `Attached: ${botAttachment.name}` : "Optional: upload through the copilot."}</small>
-            </label>
-            <button className="primary-button full-width" type="submit">
-              {botAttachment ? "Send with attachment" : "Ask Vetturo"}
-            </button>
+            <div className="bot-composer">
+              <textarea
+                className="bot-input"
+                value={botInput}
+                onChange={(event) => setBotInput(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" && !event.shiftKey) {
+                    event.preventDefault();
+                    void handleBotSubmit(event);
+                  }
+                }}
+                placeholder="Ask about mall data, create work, upload docs, or investigate a brand."
+                rows={3}
+              />
+              <div className="bot-composer-row">
+                <label className="bot-attach">
+                  <input type="file" accept=".pdf,.xlsx,.xls,.csv" onChange={(event) => setBotAttachment(event.target.files?.[0] || null)} />
+                  <span>{botAttachment ? botAttachment.name : "Attach file"}</span>
+                </label>
+                <button className="primary-button bot-send-button" type="submit">
+                  {botAttachment ? "Send with file" : "Send"}
+                </button>
+              </div>
+            </div>
           </form>
         </aside>
       ) : null}
