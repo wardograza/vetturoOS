@@ -25,16 +25,24 @@ async function insertTaskWithFallback(admin, sanitized) {
 
   const insertOnly = await admin.from("tasks").insert(sanitized);
   if (!insertOnly.error) {
-    const createdTask = await admin
+    let createdTaskQuery = admin
       .from("tasks")
       .select("id, assigned_to, status, sla_due_at")
-      .match({
-        title: sanitized.title,
-        department: sanitized.department,
-      })
+      .eq("title", sanitized.title)
       .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
+      .limit(1);
+
+    if (sanitized.department !== undefined) {
+      createdTaskQuery = createdTaskQuery.eq("department", sanitized.department);
+    }
+    if (sanitized.priority !== undefined) {
+      createdTaskQuery = createdTaskQuery.eq("priority", sanitized.priority);
+    }
+    if (sanitized.created_by !== undefined) {
+      createdTaskQuery = createdTaskQuery.eq("created_by", sanitized.created_by);
+    }
+
+    const createdTask = await createdTaskQuery.maybeSingle();
 
     createdRecord = createdTask.data || null;
     return { error: null, createdRecord };
@@ -148,15 +156,21 @@ export async function createTaskRecord({ admin, actorId, body }) {
       let finalAssignedToId = createdRecord?.assigned_to || null;
       let finalStatus = createdRecord?.status || "open";
 
-      if (taskId && assignee && !finalAssignedToId && !variant.keepsAssignment) {
+      if (taskId && assignee && !finalAssignedToId) {
         const assignResult = await admin
           .from("tasks")
           .update({ assigned_to: assignee.id, status: "assigned" })
           .eq("id", taskId);
 
         if (!assignResult.error) {
-          finalAssignedToId = assignee.id;
-          finalStatus = "assigned";
+          const verification = await admin
+            .from("tasks")
+            .select("assigned_to, status")
+            .eq("id", taskId)
+            .maybeSingle();
+
+          finalAssignedToId = (verification.data?.assigned_to || assignee.id) ?? null;
+          finalStatus = (verification.data?.status || "assigned") ?? "assigned";
         }
       }
 

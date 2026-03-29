@@ -113,6 +113,12 @@ interface BotToast {
   text: string;
 }
 
+interface ApprovalProgress {
+  documentId: string;
+  percent: number;
+  message: string;
+}
+
 interface ManagedUserDraft {
   userId: string;
   email: string;
@@ -701,6 +707,7 @@ function App() {
   const [showProfileConfirmPassword, setShowProfileConfirmPassword] = useState(false);
   const [pendingApproval, setPendingApproval] = useState<DocumentRecord | null>(null);
   const [pendingConflicts, setPendingConflicts] = useState<string[]>([]);
+  const [approvalProgress, setApprovalProgress] = useState<ApprovalProgress | null>(null);
   const [inviteBanner, setInviteBanner] = useState<string | null>(null);
   const [tenantPageSize, setTenantPageSize] = useState(25);
   const [tenantPage, setTenantPage] = useState(1);
@@ -1611,6 +1618,34 @@ function App() {
 
   async function handleApprove(documentId: string, allowOverwrite = false) {
     setSavingState("approve");
+    setWorkspaceError(null);
+    setApprovalProgress({
+      documentId,
+      percent: 10,
+      message: allowOverwrite ? "Overwriting conflicting values and rebuilding memory…" : "Starting ingestion into core memory…",
+    });
+
+    const progressTimer = window.setInterval(() => {
+      setApprovalProgress((current) => {
+        if (!current || current.documentId !== documentId) {
+          return current;
+        }
+
+        const nextPercent = Math.min(current.percent + 14, 90);
+        const nextMessage =
+          nextPercent < 35
+            ? "Validating document structure…"
+            : nextPercent < 65
+              ? "Mapping fields into the mall data model…"
+              : "Writing approved data into core memory…";
+
+        return {
+          ...current,
+          percent: nextPercent,
+          message: nextMessage,
+        };
+      });
+    }, 450);
 
     try {
       const result = await callApi<{ ok?: boolean; requiresConfirmation?: boolean; conflicts?: [string, unknown][] }>(
@@ -1620,7 +1655,8 @@ function App() {
 
       if (result.requiresConfirmation) {
         setPendingApproval(documents.find((document) => document.id === documentId) ?? null);
-        setPendingConflicts((result.conflicts ?? []).map(([key]) => key));
+        setPendingConflicts([...new Set((result.conflicts ?? []).map(([key]) => key))]);
+        setApprovalProgress(null);
         pushBot(
           "assistant",
           "I found existing values that this approval would overwrite. Review the conflict list and approve again if you want the new data to replace the old data.",
@@ -1628,12 +1664,22 @@ function App() {
       } else {
         setPendingApproval(null);
         setPendingConflicts([]);
+        setApprovalProgress({
+          documentId,
+          percent: 100,
+          message: "Core memory updated successfully.",
+        });
         pushBot("assistant", "Document approved and moved into core memory.");
         await loadWorkspace();
+        window.setTimeout(() => {
+          setApprovalProgress((current) => (current?.documentId === documentId ? null : current));
+        }, 1200);
       }
     } catch (error) {
+      setApprovalProgress(null);
       setWorkspaceError(error instanceof Error ? error.message : "Approval failed.");
     } finally {
+      window.clearInterval(progressTimer);
       setSavingState(null);
     }
   }
@@ -1826,6 +1872,7 @@ function App() {
         {!workspaceLoading && workspace ? (
           <PageRenderer
             activePage={activePage}
+            approvalProgress={approvalProgress}
             communications={communications}
             configDraft={configDraft}
             documents={documents}
@@ -2223,6 +2270,7 @@ interface PageRendererProps {
   leasingIntel: DecisionDnaRecord[];
   managedUserDraft: ManagedUserDraft;
   overviewMetrics: { label: string; value: string; note: string }[];
+  approvalProgress: ApprovalProgress | null;
   pendingApproval: DocumentRecord | null;
   pendingConflicts: string[];
   pendingDocuments: DocumentRecord[];
@@ -2306,6 +2354,7 @@ function PageRenderer(props: PageRendererProps) {
     leasingIntel,
     managedUserDraft,
     overviewMetrics,
+    approvalProgress,
     pendingApproval,
     pendingConflicts,
     pendingDocuments,
@@ -3055,6 +3104,17 @@ function PageRenderer(props: PageRendererProps) {
               <h3>Pending documents</h3>
             </div>
           </div>
+          {approvalProgress ? (
+            <div className="approval-progress top-gap">
+              <div className="thread-topline">
+                <strong>{approvalProgress.message}</strong>
+                <span>{approvalProgress.percent}%</span>
+              </div>
+              <div className="progress-track" aria-hidden="true">
+                <div className="progress-fill" style={{ width: `${approvalProgress.percent}%` }} />
+              </div>
+            </div>
+          ) : null}
           <div className="thread-list">
             {pendingDocuments.length > 0 ? (
               pendingDocuments.map((document) => (
@@ -3065,9 +3125,19 @@ function PageRenderer(props: PageRendererProps) {
                   </div>
                   <p>{document.domainCategory || "Uncategorized"} • {document.subCategory || "No sub-category"}</p>
                   <small>{document.purposeSummary || "No purpose summary yet"}</small>
+                  {approvalProgress?.documentId === document.id ? (
+                    <small className="top-gap block-copy">
+                      {approvalProgress.message} {approvalProgress.percent}%
+                    </small>
+                  ) : null}
                   <div className="button-row top-gap">
-                    <button className="primary-button" disabled={savingState === "approve"} onClick={() => void onApprove(document.id)} type="button">
-                      Approve into memory
+                    <button
+                      className="primary-button"
+                      disabled={savingState === "approve"}
+                      onClick={() => void onApprove(document.id)}
+                      type="button"
+                    >
+                      {approvalProgress?.documentId === document.id ? "Ingesting…" : "Approve into memory"}
                     </button>
                   </div>
                 </div>

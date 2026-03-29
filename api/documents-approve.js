@@ -16,8 +16,22 @@ function conflictEntries(existing, incoming) {
   }
 
   return Object.entries(incoming).filter(([key, value]) => {
+    if (value === undefined || value === null || String(value).trim() === "") {
+      return false;
+    }
     const current = existing[key];
     return current !== undefined && current !== null && String(current) !== String(value);
+  });
+}
+
+function uniqueConflictEntries(entries) {
+  const seen = new Set();
+  return entries.filter(([key]) => {
+    if (seen.has(key)) {
+      return false;
+    }
+    seen.add(key);
+    return true;
   });
 }
 
@@ -78,6 +92,7 @@ export default async function handler(req, res) {
           .maybeSingle();
 
         conflicts = conflicts.concat(conflictEntries(existingOrg?.source_payload, organizationPayload));
+        conflicts = uniqueConflictEntries(conflicts);
 
         if (conflicts.length > 0 && !body.allowOverwrite) {
           return sendJson(res, 200, {
@@ -119,10 +134,12 @@ export default async function handler(req, res) {
             .from("tenant_profiles")
             .select("brand_name, unit_code, source_payload")
             .eq("brand_name", tenantPayload.Brand_Name)
+            .eq("unit_code", tenantPayload.Unit_Code || "Unassigned")
             .maybeSingle();
 
           conflicts = conflicts.concat(conflictEntries(existingTenant?.source_payload, tenantPayload));
         }
+        conflicts = uniqueConflictEntries(conflicts);
 
         if (conflicts.length > 0 && !body.allowOverwrite) {
           return sendJson(res, 200, {
@@ -197,6 +214,7 @@ export default async function handler(req, res) {
 
         conflicts = conflicts.concat(conflictEntries(existingTenant?.source_payload, tenantPayload));
       }
+      conflicts = uniqueConflictEntries(conflicts);
 
       if (conflicts.length > 0 && !body.allowOverwrite) {
         return sendJson(res, 200, {
@@ -258,7 +276,7 @@ export default async function handler(req, res) {
         .eq("brand_name", payload.Brand_Name)
         .maybeSingle();
 
-      conflicts = conflictEntries(existingTenant?.source_payload, payload);
+      conflicts = uniqueConflictEntries(conflictEntries(existingTenant?.source_payload, payload));
 
       if (conflicts.length > 0 && !body.allowOverwrite) {
         return sendJson(res, 200, {
@@ -315,7 +333,7 @@ export default async function handler(req, res) {
         .limit(1)
         .maybeSingle();
 
-      conflicts = conflictEntries(existingOrg?.source_payload, payload);
+      conflicts = uniqueConflictEntries(conflictEntries(existingOrg?.source_payload, payload));
 
       if (conflicts.length > 0 && !body.allowOverwrite) {
         return sendJson(res, 200, {
