@@ -81,27 +81,41 @@ export default async function handler(req, res) {
     const rentRollRows = Array.isArray(payload.rentRollRows) ? payload.rentRollRows : null;
     const financeSummaryRows = Array.isArray(payload.financeSummaryRows) ? payload.financeSummaryRows : null;
     const brandStatsRows = Array.isArray(payload.brandStatsRows) ? payload.brandStatsRows : null;
+    const workbookType = payload.workbookType || null;
+    const templateScope = payload.templateScope || null;
     let conflicts = [];
 
     if (organizationPayload || tenantPayloads) {
+      const isOnboardingTemplate = workbookType === "onboarding";
+      const replaceOrganizationSnapshot =
+        isOnboardingTemplate && Boolean(organizationPayload) && ["organization", "combined"].includes(templateScope);
+      const replaceTenantSnapshot =
+        isOnboardingTemplate && Array.isArray(tenantPayloads) && tenantPayloads.length > 0 && ["location", "combined"].includes(templateScope);
+
       if (organizationPayload) {
-        const { data: existingOrg } = await admin
-          .from("organization_profiles")
-          .select("source_payload")
-          .limit(1)
-          .maybeSingle();
+        if (!replaceOrganizationSnapshot) {
+          const { data: existingOrg } = await admin
+            .from("organization_profiles")
+            .select("source_payload")
+            .limit(1)
+            .maybeSingle();
 
-        conflicts = conflicts.concat(conflictEntries(existingOrg?.source_payload, organizationPayload));
-        conflicts = uniqueConflictEntries(conflicts);
+          conflicts = conflicts.concat(conflictEntries(existingOrg?.source_payload, organizationPayload));
+          conflicts = uniqueConflictEntries(conflicts);
 
-        if (conflicts.length > 0 && !body.allowOverwrite) {
-          return sendJson(res, 200, {
-            requiresConfirmation: true,
-            conflicts,
-          });
+          if (conflicts.length > 0 && !body.allowOverwrite) {
+            return sendJson(res, 200, {
+              requiresConfirmation: true,
+              conflicts,
+            });
+          }
         }
 
         const missing = findMissingFields(organizationPayload, organizationRequiredFields);
+
+        if (replaceOrganizationSnapshot) {
+          await admin.from("organization_profiles").delete().not("id", "is", null);
+        }
 
         await admin.from("organization_profiles").upsert({
           organization_name: organizationPayload.Organization_Name || "Vetturo",
@@ -129,23 +143,27 @@ export default async function handler(req, res) {
       }
 
       if (tenantPayloads) {
-        for (const tenantPayload of tenantPayloads) {
-          const { data: existingTenant } = await admin
-            .from("tenant_profiles")
-            .select("brand_name, unit_code, source_payload")
-            .eq("brand_name", tenantPayload.Brand_Name)
-            .eq("unit_code", tenantPayload.Unit_Code || "Unassigned")
-            .maybeSingle();
+        if (!replaceTenantSnapshot) {
+          for (const tenantPayload of tenantPayloads) {
+            const { data: existingTenant } = await admin
+              .from("tenant_profiles")
+              .select("brand_name, unit_code, source_payload")
+              .eq("brand_name", tenantPayload.Brand_Name)
+              .eq("unit_code", tenantPayload.Unit_Code || "Unassigned")
+              .maybeSingle();
 
-          conflicts = conflicts.concat(conflictEntries(existingTenant?.source_payload, tenantPayload));
-        }
-        conflicts = uniqueConflictEntries(conflicts);
+            conflicts = conflicts.concat(conflictEntries(existingTenant?.source_payload, tenantPayload));
+          }
+          conflicts = uniqueConflictEntries(conflicts);
 
-        if (conflicts.length > 0 && !body.allowOverwrite) {
-          return sendJson(res, 200, {
-            requiresConfirmation: true,
-            conflicts,
-          });
+          if (conflicts.length > 0 && !body.allowOverwrite) {
+            return sendJson(res, 200, {
+              requiresConfirmation: true,
+              conflicts,
+            });
+          }
+        } else {
+          await admin.from("tenant_profiles").delete().not("id", "is", null);
         }
 
         for (const tenantPayload of tenantPayloads) {
@@ -188,6 +206,7 @@ export default async function handler(req, res) {
             structured_payload: {
               missingFields: missing,
               sourcePayload: tenantPayload,
+              templateScope,
             },
           });
         }

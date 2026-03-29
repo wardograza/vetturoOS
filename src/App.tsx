@@ -509,8 +509,11 @@ async function parseOnboardingWorkbook(file: File) {
 
       return {
         workbookType: "onboarding",
+        templateScope: "organization",
+        headers,
         organizationPayload,
         tenantPayloads: [],
+        tenantRowCount: 0,
         sheetNames: workbook.SheetNames,
       };
     }
@@ -526,8 +529,11 @@ async function parseOnboardingWorkbook(file: File) {
 
       return {
         workbookType: "onboarding",
+        templateScope: "location",
+        headers,
         organizationPayload: {},
         tenantPayloads,
+        tenantRowCount: tenantPayloads.length,
         sheetNames: workbook.SheetNames,
       };
     }
@@ -575,8 +581,10 @@ async function parseOnboardingWorkbook(file: File) {
   if (organizationSheet || tenantSheet) {
     return {
       workbookType: "onboarding",
+      templateScope: organizationSheet && tenantSheet ? "combined" : organizationSheet ? "organization" : "location",
       organizationPayload,
       tenantPayloads,
+      tenantRowCount: tenantPayloads.length,
       sheetNames: workbook.SheetNames,
     };
   }
@@ -661,11 +669,13 @@ async function parseOnboardingWorkbook(file: File) {
 
   return {
     workbookType: "finance",
+    templateScope: "finance",
     organizationPayload: {},
     tenantPayloads: [],
     financeSummaryRows,
     rentRollRows,
     brandStatsRows,
+    tenantRowCount: 0,
     sheetNames: workbook.SheetNames,
   };
 }
@@ -1340,6 +1350,9 @@ function App() {
         });
 
         const storagePath = await uploadToVault(botAttachment);
+        const parsedPayload = /\.(xlsx|xls|csv)$/i.test(botAttachment.name)
+          ? await parseOnboardingWorkbook(botAttachment)
+          : null;
         await callApi("/api/document-register", {
           fileName: botAttachment.name,
           storagePath,
@@ -1347,8 +1360,13 @@ function App() {
           domainCategory: result.domain,
           subCategory: result.subCategory,
           purposeSummary: result.purposeSummary,
-          parserSummary: message || `Uploaded via copilot chat.`,
-          sourcePayload: /\.(xlsx|xls|csv)$/i.test(botAttachment.name) ? await parseOnboardingWorkbook(botAttachment) : null,
+          parserSummary:
+            parsedPayload?.workbookType === "onboarding" && parsedPayload?.templateScope === "organization"
+              ? "Organization template parsed successfully."
+              : parsedPayload
+                ? `Workbook parsed with ${parsedPayload?.tenantRowCount ?? parsedPayload?.tenantPayloads?.length ?? 0} tenant row(s).`
+                : message || `Uploaded via copilot chat.`,
+          sourcePayload: parsedPayload,
         });
 
         setBotAttachment(null);
@@ -1597,7 +1615,9 @@ function App() {
         subCategory: uploadDraft.subCategory,
         purposeSummary: uploadDraft.purposeSummary,
         parserSummary: isWorkbook
-          ? `Workbook parsed with ${parsedPayload?.tenantPayloads?.length ?? 0} tenant row(s).`
+          ? parsedPayload?.workbookType === "onboarding" && parsedPayload?.templateScope === "organization"
+            ? "Organization template parsed successfully."
+            : `Workbook parsed with ${parsedPayload?.tenantRowCount ?? parsedPayload?.tenantPayloads?.length ?? 0} tenant row(s).`
           : uploadDraft.notes,
         sourcePayload: parsedPayload,
       });
