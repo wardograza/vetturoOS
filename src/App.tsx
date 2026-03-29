@@ -413,6 +413,10 @@ function getDerivedMetric(
   return { label, value, note };
 }
 
+function getMissingMetricNote(label: string, missing: string) {
+  return `${label} needs ${missing} to calculate reliably.`;
+}
+
 function getCommunicationBadge(status: string) {
   const normalized = status.toLowerCase();
 
@@ -1020,6 +1024,208 @@ function App() {
     }
   }, [communications.length, currentProfile?.role, documents, leasingIntel.length, pendingDocuments.length, revenueSummary.average, revenueSummary.total, tasks, tenants]);
 
+  const topCategoryEntries = useMemo(
+    () =>
+      [...tenants.reduce<Map<string, number>>((map, tenant) => {
+        const key = tenant.categoryPrimary || "Unclassified";
+        map.set(key, (map.get(key) || 0) + 1);
+        return map;
+      }, new Map()).entries()].sort((left, right) => right[1] - left[1]).slice(0, 5),
+    [tenants],
+  );
+
+  const expiringLeaseList = useMemo(
+    () =>
+      [...tenants]
+        .filter((tenant) => tenant.leaseExpiryDate)
+        .sort((left, right) => new Date(left.leaseExpiryDate || 0).getTime() - new Date(right.leaseExpiryDate || 0).getTime())
+        .slice(0, 6),
+    [tenants],
+  );
+
+  const departmentTaskLoad = useMemo(
+    () =>
+      ["facilities", "finance", "leasing", "operations"].map((department) => ({
+        department,
+        count: tasks.filter((task) => (task.department || "").toLowerCase() === department).length,
+      })),
+    [tasks],
+  );
+
+  const dataReadinessItems = useMemo(() => {
+    const withCategory = tenants.filter((tenant) => tenant.categoryPrimary).length;
+    const withArea = tenants.filter((tenant) => tenant.unitGlaSba).length;
+    const withLease = tenants.filter((tenant) => tenant.leaseExpiryDate).length;
+    const withHealth = tenants.filter((tenant) => typeof tenant.lastAuditScore === "number").length;
+
+    return [
+      {
+        label: "Category tagging",
+        value: `${withCategory}/${tenants.length || 0}`,
+        note:
+          tenants.length > 0
+            ? `${Math.round((withCategory / Math.max(tenants.length, 1)) * 100)}% of brands have category data.`
+            : getMissingMetricNote("Category tagging", "tenant uploads"),
+      },
+      {
+        label: "Lease coverage",
+        value: `${withLease}/${tenants.length || 0}`,
+        note:
+          tenants.length > 0
+            ? `${Math.round((withLease / Math.max(tenants.length, 1)) * 100)}% of brands have lease expiry values.`
+            : getMissingMetricNote("Lease coverage", "lease expiry values"),
+      },
+      {
+        label: "Area coverage",
+        value: `${withArea}/${tenants.length || 0}`,
+        note:
+          tenants.length > 0
+            ? `${Math.round((withArea / Math.max(tenants.length, 1)) * 100)}% of brands have SBA / GLA values.`
+            : getMissingMetricNote("Area coverage", "unit area values"),
+      },
+      {
+        label: "Health coverage",
+        value: `${withHealth}/${tenants.length || 0}`,
+        note:
+          tenants.length > 0
+            ? `${Math.round((withHealth / Math.max(tenants.length, 1)) * 100)}% of brands have audit or health data.`
+            : getMissingMetricNote("Health coverage", "audit or health scores"),
+      },
+    ];
+  }, [tenants]);
+
+  const overviewFocusItems = useMemo(() => {
+    switch (currentProfile?.role) {
+      case "finance":
+        return {
+          title: "Finance watchlist",
+          kicker: "Portfolio Focus",
+          items: [
+            {
+              label: "Top rent contributors",
+              value: revenueSummary.topFive.length > 0 ? revenueSummary.topFive.map((tenant) => tenant.brandName).slice(0, 3).join(", ") : "Need tenant rent data",
+              note: revenueSummary.topFive.length > 0 ? "Highest tracked rent contributors right now." : getMissingMetricNote("Top rent contributors", "rent values"),
+            },
+            {
+              label: "Security deposits",
+              value: formatCompactCurrency(
+                tenants.reduce((sum, tenant) => sum + (tenant.securityDeposit || 0), 0),
+              ),
+              note:
+                tenants.some((tenant) => tenant.securityDeposit)
+                  ? "Mapped from approved tenant onboarding."
+                  : getMissingMetricNote("Security deposits", "security deposit values"),
+            },
+            {
+              label: "Escalation readiness",
+              value: `${tenants.filter((tenant) => tenant.leaseExpiryDate && tenant.mgRentMonthly).length}`,
+              note: "Brands with enough stored lease/rent context for escalation planning.",
+            },
+          ],
+        };
+      case "leasing_manager":
+        return {
+          title: "Leasing focus",
+          kicker: "Portfolio Focus",
+          items: [
+            {
+              label: "Top category clusters",
+              value: topCategoryEntries.slice(0, 3).map(([category]) => category).join(", ") || "Need category data",
+              note:
+                topCategoryEntries.length > 0
+                  ? "Current dominant categories in the mall."
+                  : getMissingMetricNote("Category clusters", "category values"),
+            },
+            {
+              label: "Replacement watchlist",
+              value: `${expiringLeaseList.length}`,
+              note:
+                expiringLeaseList.length > 0
+                  ? "Brands with the nearest tracked lease expiries."
+                  : getMissingMetricNote("Replacement watchlist", "lease expiry data"),
+            },
+            {
+              label: "Decision inputs",
+              value: `${tenants.filter((tenant) => tenant.unitGlaSba && tenant.categoryPrimary).length}`,
+              note: "Brands with enough stored area + category context for fit comparisons.",
+            },
+          ],
+        };
+      case "facilities":
+        return {
+          title: "Facilities focus",
+          kicker: "Operational Focus",
+          items: [
+            {
+              label: "Live facilities queue",
+              value: `${departmentTaskLoad.find((item) => item.department === "facilities")?.count || 0}`,
+              note: "Tasks currently routed to facilities.",
+            },
+            {
+              label: "Units with utilities context",
+              value: `${tenants.filter((tenant) => tenant.powerLoadKva || tenant.gasConnectionYn || tenant.waterInletYn).length}`,
+              note:
+                tenants.length > 0
+                  ? "Brands carrying utility/infrastructure detail."
+                  : getMissingMetricNote("Utilities context", "location onboarding rows"),
+            },
+            {
+              label: "Compliance dates",
+              value: `${tenants.filter((tenant) => tenant.insuranceExpiry || tenant.tradeLicenseExpiry).length}`,
+              note: "Brands with at least one compliance expiry stored.",
+            },
+          ],
+        };
+      case "mall_manager":
+        return {
+          title: "Command view",
+          kicker: "Operational Focus",
+          items: [
+            {
+              label: "Pending intake",
+              value: `${pendingDocuments.length}`,
+              note: pendingDocuments.length > 0 ? "Documents still waiting to enter core memory." : "No pending approvals right now.",
+            },
+            {
+              label: "Open operational load",
+              value: `${tasks.filter((task) => (task.status || "open") !== "closed").length}`,
+              note: "Live tasks still in motion across departments.",
+            },
+            {
+              label: "Data completeness",
+              value: `${onboardingGaps.length}`,
+              note: onboardingGaps.length > 0 ? "Outstanding onboarding gaps still affecting visibility." : "Required onboarding fields look complete.",
+            },
+          ],
+        };
+      default:
+        return {
+          title: "Portfolio focus",
+          kicker: "Command View",
+          items: [
+            {
+              label: "Category spread",
+              value: `${topCategoryEntries.length}`,
+              note: topCategoryEntries.length > 0 ? "Distinct category clusters currently mapped." : getMissingMetricNote("Category spread", "category values"),
+            },
+            {
+              label: "Documents in memory",
+              value: `${documents.filter((document) => document.isInCoreMemory).length}`,
+              note: "Approved uploads currently shaping the workspace.",
+            },
+            {
+              label: "Next lease cliffs",
+              value: expiringLeaseList.slice(0, 3).map((tenant) => tenant.brandName).join(", ") || "Need lease expiry data",
+              note:
+                expiringLeaseList.length > 0
+                  ? "Nearest upcoming lease expiries from the stored tenant master."
+                  : getMissingMetricNote("Lease cliffs", "lease expiry values"),
+            },
+          ],
+        };
+    }
+  }, [currentProfile?.role, departmentTaskLoad, documents, expiringLeaseList, onboardingGaps.length, pendingDocuments.length, revenueSummary.topFive, tasks, tenants, topCategoryEntries]);
+
   const copilotContextItems = useMemo(
     () => [
       {
@@ -1160,6 +1366,46 @@ function App() {
       return stats && typeof stats === "object" ? (stats as Record<string, unknown>) : null;
     },
     [detailTenant],
+  );
+
+  const detailPeerStats = useMemo(() => {
+    if (!detailTenant) {
+      return null;
+    }
+
+    const peers = tenantResults.filter(
+      (tenant) => tenant.id !== detailTenant.id && tenant.categoryPrimary === detailTenant.categoryPrimary,
+    );
+
+    const avgRent =
+      peers.length > 0 ? peers.reduce((sum, tenant) => sum + tenant.rent, 0) / peers.length : null;
+    const avgArea =
+      peers.filter((tenant) => tenant.unitGlaSba).length > 0
+        ? peers.reduce((sum, tenant) => sum + (tenant.unitGlaSba || 0), 0) /
+          peers.filter((tenant) => tenant.unitGlaSba).length
+        : null;
+    const avgHealth =
+      peers.filter((tenant) => typeof tenant.lastAuditScore === "number").length > 0
+        ? peers.reduce((sum, tenant) => sum + (tenant.lastAuditScore || 0), 0) /
+          peers.filter((tenant) => typeof tenant.lastAuditScore === "number").length
+        : null;
+
+    return {
+      peerCount: peers.length,
+      avgRent,
+      avgArea,
+      avgHealth,
+    };
+  }, [detailTenant, tenantResults]);
+
+  const detailOnboardingGapList = useMemo(
+    () =>
+      detailTenant
+        ? onboardingGaps
+            .filter((gap) => gap.recordLabel.toLowerCase() === detailTenant.brandName.toLowerCase())
+            .flatMap((gap) => gap.missingFields)
+        : [],
+    [detailTenant, onboardingGaps],
   );
 
   const selectedLeasingRecord = useMemo(
@@ -1993,13 +2239,16 @@ function App() {
             approvalProgress={approvalProgress}
             communications={communications}
             configDraft={configDraft}
+            dataReadinessItems={dataReadinessItems}
             documents={documents}
+            expiringLeaseList={expiringLeaseList}
             inviteDraft={inviteDraft}
             invites={invites}
             leasingDraft={leasingDraft}
             leasingIntel={leasingIntel}
             managedUserDraft={managedUserDraft}
             overviewMetrics={overviewMetrics}
+            overviewFocusItems={overviewFocusItems}
             pendingApproval={pendingApproval}
             pendingConflicts={pendingConflicts}
             pendingDocuments={pendingDocuments}
@@ -2038,13 +2287,14 @@ function App() {
             taskDraft={taskDraft}
             taskFilters={taskFilters}
             taskSectionState={taskSectionState}
-            tasks={tasks}
             taskScopeAccess={visibleTaskRecords}
             taskScopes={filteredTaskScopes}
             tenantDraft={tenantDraft}
+            tenants={tenants}
             tenantPage={tenantPage}
             tenantPageSize={tenantPageSize}
             tenantPageCount={Math.max(1, Math.ceil(tenantResults.length / tenantPageSize))}
+            topCategoryEntries={topCategoryEntries}
             paginatedTenantResults={paginatedTenantResults}
             tenantSearch={tenantSearch}
             uploadDraft={uploadDraft}
@@ -2241,10 +2491,50 @@ function App() {
                   info="Latest stored health or audit score for the brand. Vetturo uses Last Audit Score first, and can also map health-style values from approved finance or brand-stat sheets when available."
                 />
               </div>
+              <div className="mini-stats three-up">
+                <MetricCardWithInfo
+                  label="Lease Expiry"
+                  value={detailTenant.leaseExpiryDate ? formatDate(detailTenant.leaseExpiryDate) : "Missing"}
+                  note="Renewal watch"
+                  info="Current lease-expiry date pulled from the approved tenant onboarding source. This is used in renewal and replacement watchlists."
+                />
+                <MetricCardWithInfo
+                  label="Security Deposit"
+                  value={detailTenant.securityDeposit ? formatCompactCurrency(detailTenant.securityDeposit) : "Missing"}
+                  note="Commercial cover"
+                  info="Security deposit value stored for this brand. Vetturo reads this from the approved tenant onboarding upload."
+                />
+                <MetricCardWithInfo
+                  label="GTO Share"
+                  value={typeof detailTenant.gtoPercent === "number" ? `${detailTenant.gtoPercent}%` : "Missing"}
+                  note="Revenue share"
+                  info="Current gross-turnover sharing percentage stored for the brand. Used for commercial and lease-structure context."
+                />
+              </div>
               <div className="thread-card">
                 <strong>Brand profile</strong>
                 <p>{detailTenant.categoryPrimary || "No category"} • {detailTenant.categorySecondary || "No sub-category"} • {detailTenant.parentCompany || "No parent company"}</p>
                 <small>Lease expiry {formatDate(detailTenant.leaseExpiryDate)} • Store manager {detailTenant.storeManagerName || "Not provided"}</small>
+              </div>
+              <div className="content-grid balanced tight-grid">
+                <div className="thread-card">
+                  <strong>Commercial snapshot</strong>
+                  <div className="detail-list">
+                    <div><span>MG Rent</span><strong>{detailTenant.mgRentMonthly ? formatCompactCurrency(detailTenant.mgRentMonthly) : "Missing"}</strong></div>
+                    <div><span>Deposit</span><strong>{detailTenant.securityDeposit ? formatCompactCurrency(detailTenant.securityDeposit) : "Missing"}</strong></div>
+                    <div><span>Lease start</span><strong>{detailTenant.leaseStartDate ? formatDate(detailTenant.leaseStartDate) : "Missing"}</strong></div>
+                    <div><span>Lease expiry</span><strong>{detailTenant.leaseExpiryDate ? formatDate(detailTenant.leaseExpiryDate) : "Missing"}</strong></div>
+                  </div>
+                </div>
+                <div className="thread-card">
+                  <strong>Infrastructure and compliance</strong>
+                  <div className="detail-list">
+                    <div><span>Power load</span><strong>{detailTenant.powerLoadKva ? `${detailTenant.powerLoadKva} kVA` : "Missing"}</strong></div>
+                    <div><span>Gas connection</span><strong>{detailTenant.gasConnectionYn || "Missing"}</strong></div>
+                    <div><span>Insurance expiry</span><strong>{detailTenant.insuranceExpiry ? formatDate(detailTenant.insuranceExpiry) : "Missing"}</strong></div>
+                    <div><span>Trade license</span><strong>{detailTenant.tradeLicenseExpiry ? formatDate(detailTenant.tradeLicenseExpiry) : "Missing"}</strong></div>
+                  </div>
+                </div>
               </div>
               <div className="thread-card">
                 <strong>Operating indicators</strong>
@@ -2279,14 +2569,34 @@ function App() {
                   info="This is a normalized 0 to 100 health-style score based on the latest audit or mapped health ratio available for the brand in approved memory."
                 />
               </div>
+              <div className="content-grid balanced tight-grid">
+                <div className="thread-card">
+                  <strong>Peer benchmark</strong>
+                  <div className="detail-list">
+                    <div><span>Category cohort</span><strong>{detailPeerStats?.peerCount ? `${detailPeerStats.peerCount} peers` : "No peers yet"}</strong></div>
+                    <div><span>Avg category rent</span><strong>{detailPeerStats?.avgRent ? formatCompactCurrency(detailPeerStats.avgRent) : "Need more category rent data"}</strong></div>
+                    <div><span>Avg category area</span><strong>{detailPeerStats?.avgArea ? `${Math.round(detailPeerStats.avgArea)}` : "Need more area data"}</strong></div>
+                    <div><span>Avg category health</span><strong>{typeof detailPeerStats?.avgHealth === "number" ? `${Math.round(detailPeerStats.avgHealth)}` : "Need health scores"}</strong></div>
+                  </div>
+                </div>
+                <div className="thread-card">
+                  <strong>Missing fields affecting insight</strong>
+                  <p>
+                    {detailOnboardingGapList.join(", ") || "No required onboarding gaps detected for this brand."}
+                  </p>
+                  <small>
+                    Vetturo calls these out so comparison, leasing, and compliance logic can improve as more data is uploaded.
+                  </small>
+                </div>
+              </div>
               <div className="thread-card">
-                <strong>Onboarding gaps</strong>
+                <strong>Contacts and ownership</strong>
                 <p>
-                  {onboardingGaps
-                    .filter((gap) => gap.recordLabel.toLowerCase() === detailTenant.brandName.toLowerCase())
-                    .flatMap((gap) => gap.missingFields)
-                    .join(", ") || "No required onboarding gaps detected for this brand."}
+                  Brand POC {detailTenant.brandPocName || "Missing"} • Store manager {detailTenant.storeManagerName || "Missing"}
                 </p>
+                <small>
+                  Billing {detailTenant.billingContactEmail || "Missing"} • Leasing lead {detailTenant.nexusLeasingLead || "Missing"}
+                </small>
               </div>
             </div>
           </section>
@@ -2440,13 +2750,16 @@ interface PageRendererProps {
   activePage: NavPage;
   communications: CommunicationRecord[];
   configDraft: ConfigDraft;
+  dataReadinessItems: { label: string; value: string; note: string }[];
   documents: DocumentRecord[];
+  expiringLeaseList: TenantProfile[];
   inviteDraft: InviteDraft;
   invites: WorkspaceData["invites"];
   leasingDraft: LeasingDraft;
   leasingIntel: DecisionDnaRecord[];
   managedUserDraft: ManagedUserDraft;
   overviewMetrics: { label: string; value: string; note: string }[];
+  overviewFocusItems: { title: string; kicker: string; items: { label: string; value: string; note: string }[] };
   approvalProgress: ApprovalProgress | null;
   pendingApproval: DocumentRecord | null;
   pendingConflicts: string[];
@@ -2486,7 +2799,6 @@ interface PageRendererProps {
   taskDraft: TaskDraft;
   taskFilters: TaskFilters;
   taskSectionState: { my: boolean; dept: boolean; live: boolean };
-  tasks: TaskRecord[];
   taskScopes: {
     myTasks: TaskRecord[];
     deptTasks: TaskRecord[];
@@ -2501,9 +2813,11 @@ interface PageRendererProps {
     canSeeLive: boolean;
   };
   tenantDraft: TenantDraft;
+  tenants: TenantProfile[];
   tenantPage: number;
   tenantPageCount: number;
   tenantPageSize: number;
+  topCategoryEntries: [string, number][];
   paginatedTenantResults: TenantProfile[];
   tenantSearch: string;
   uploadDraft: UploadDraft;
@@ -2524,13 +2838,16 @@ function PageRenderer(props: PageRendererProps) {
     activePage,
     communications,
     configDraft,
+    dataReadinessItems,
     documents,
+    expiringLeaseList,
     inviteDraft,
     invites,
     leasingDraft,
     leasingIntel,
     managedUserDraft,
     overviewMetrics,
+    overviewFocusItems,
     approvalProgress,
     pendingApproval,
     pendingConflicts,
@@ -2570,13 +2887,14 @@ function PageRenderer(props: PageRendererProps) {
     taskDraft,
     taskFilters,
     taskSectionState,
-    tasks,
     taskScopeAccess,
     taskScopes,
     tenantDraft,
+    tenants,
     tenantPage,
     tenantPageCount,
     tenantPageSize,
+    topCategoryEntries,
     paginatedTenantResults,
     tenantSearch,
     uploadDraft,
@@ -2727,48 +3045,100 @@ function PageRenderer(props: PageRendererProps) {
           <article className="panel">
             <div className="panel-header">
               <div>
-                <p className="panel-kicker">Task Pulse</p>
-                <h3>Operational queue</h3>
+                <p className="panel-kicker">{overviewFocusItems.kicker}</p>
+                <h3>{overviewFocusItems.title}</h3>
               </div>
             </div>
             <div className="thread-list">
-              {tasks.length > 0 ? (
-                tasks.slice(0, 6).map((task) => (
-                  <div className="thread-card" key={task.id}>
-                    <strong>{task.title}</strong>
-                    <p>{task.department || "Unassigned department"} • {task.priority || "No priority set"}</p>
-                    <small>{task.assignedToName || "Unassigned"} • SLA {formatDate(task.slaDueAt)}</small>
+              {overviewFocusItems.items.map((item) => (
+                <div className="thread-card" key={item.label}>
+                  <strong>{item.label}</strong>
+                  <p>{item.value}</p>
+                  <small>{item.note}</small>
+                </div>
+              ))}
+            </div>
+          </article>
+          <article className="panel">
+            <div className="panel-header">
+              <div>
+                <p className="panel-kicker">Data Readiness</p>
+                <h3>Coverage and completeness</h3>
+              </div>
+            </div>
+            <div className="thread-list">
+              {dataReadinessItems.map((item) => (
+                <div className="thread-card" key={item.label}>
+                  <div className="thread-topline">
+                    <strong>{item.label}</strong>
+                    <span className="badge neutral">{item.value}</span>
+                  </div>
+                  <small>{item.note}</small>
+                </div>
+              ))}
+            </div>
+          </article>
+        </section>
+        <section className="content-grid balanced">
+          <article className="panel">
+            <div className="panel-header">
+              <div>
+                <p className="panel-kicker">Category Mix</p>
+                <h3>Current tenant composition</h3>
+              </div>
+            </div>
+            <div className="thread-list">
+              {topCategoryEntries.length > 0 ? (
+                topCategoryEntries.map(([category, count]) => (
+                  <div className="thread-card" key={category}>
+                    <div className="thread-topline">
+                      <strong>{category}</strong>
+                      <span className="badge neutral">{count}</span>
+                    </div>
+                    <small>
+                      {tenants.length > 0
+                        ? `${Math.round((count / Math.max(tenants.length, 1)) * 100)}% of current tenant rows`
+                        : "Upload tenant rows to calculate category share."}
+                    </small>
                   </div>
                 ))
               ) : (
-                <div className="empty-row">No tasks are in the queue yet.</div>
+                <div className="empty-row">Upload tenant category data to see the mall mix.</div>
               )}
             </div>
           </article>
           <article className="panel">
             <div className="panel-header">
               <div>
-                <p className="panel-kicker">Memory Intake</p>
-                <h3>Documents and approvals</h3>
+                <p className="panel-kicker">Lease Watch</p>
+                <h3>Nearest expiries and top brands</h3>
               </div>
             </div>
             <div className="thread-list">
-              {documents.length > 0 ? (
-                documents.slice(0, 5).map((document) => (
-                  <div className="thread-card" key={document.id}>
-                    <div className="thread-topline">
-                      <strong>{document.fileName}</strong>
-                      <span className={`badge ${getDocumentBadge(document.status)}`}>
-                        {document.status}
-                      </span>
+              {expiringLeaseList.length > 0
+                ? expiringLeaseList.map((tenant) => (
+                    <div className="thread-card" key={tenant.id}>
+                      <div className="thread-topline">
+                        <strong>{tenant.brandName}</strong>
+                        <span className="badge warn">{formatDate(tenant.leaseExpiryDate)}</span>
+                      </div>
+                      <p>{tenant.unitCode} • {tenant.categoryPrimary || "Category missing"}</p>
+                      <small>{formatCompactCurrency(tenant.rent)} tracked rent base</small>
                     </div>
-                    <p>{document.domainCategory || "Uncategorized"} • {document.subCategory || "No sub-category"}</p>
-                    <small>{document.isInCoreMemory ? "In core memory" : "Awaiting memory admission"}</small>
-                  </div>
-                ))
-              ) : (
-                <div className="empty-row">No approved documents or uploads yet.</div>
-              )}
+                  ))
+                : revenueSummary.topFive.length > 0
+                  ? revenueSummary.topFive.slice(0, 4).map((tenant) => (
+                      <div className="thread-card" key={tenant.id}>
+                        <div className="thread-topline">
+                          <strong>{tenant.brandName}</strong>
+                          <span className="badge neutral">{formatCompactCurrency(tenant.rent)}</span>
+                        </div>
+                        <small>
+                          {tenant.unitCode} • {tenant.categoryPrimary || "Category missing"}
+                        </small>
+                      </div>
+                    ))
+                  : <div className="empty-row">Add lease expiry or rent values to populate this watchlist.</div>}
             </div>
           </article>
         </section>

@@ -381,9 +381,41 @@ small {
   margin-top: 8px;
 }
 
+.detail-list {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.detail-list > div {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--line);
+}
+
+.detail-list > div:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.detail-list span {
+  color: var(--text-soft);
+}
+
+.detail-list strong {
+  text-align: right;
+}
+
 .content-grid.balanced {
   grid-template-columns: minmax(0, 1.25fr) minmax(320px, 0.75fr);
   margin-bottom: 16px;
+}
+
+.tight-grid {
+  margin-bottom: 0;
 }
 
 .wide-panel,
