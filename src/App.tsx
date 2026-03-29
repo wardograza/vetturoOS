@@ -3104,17 +3104,6 @@ function PageRenderer(props: PageRendererProps) {
               <h3>Pending documents</h3>
             </div>
           </div>
-          {approvalProgress ? (
-            <div className="approval-progress top-gap">
-              <div className="thread-topline">
-                <strong>{approvalProgress.message}</strong>
-                <span>{approvalProgress.percent}%</span>
-              </div>
-              <div className="progress-track" aria-hidden="true">
-                <div className="progress-fill" style={{ width: `${approvalProgress.percent}%` }} />
-              </div>
-            </div>
-          ) : null}
           <div className="thread-list">
             {pendingDocuments.length > 0 ? (
               pendingDocuments.map((document) => (

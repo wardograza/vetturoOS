@@ -15,11 +15,22 @@ async function insertTaskWithFallback(admin, sanitized) {
   const insertWithSelect = await admin
     .from("tasks")
     .insert(sanitized)
-    .select("id, assigned_to, status, sla_due_at")
+    .select("id")
     .single();
 
   if (!insertWithSelect.error) {
-    createdRecord = insertWithSelect.data;
+    const insertedId = insertWithSelect.data?.id || null;
+    if (insertedId) {
+      const verification = await admin
+        .from("tasks")
+        .select("id, assigned_to, status, sla_due_at")
+        .eq("id", insertedId)
+        .maybeSingle();
+
+      createdRecord = verification.data || { id: insertedId, assigned_to: null, status: sanitized.status || "open", sla_due_at: sanitized.sla_due_at || null };
+    } else {
+      createdRecord = null;
+    }
     return { error: null, createdRecord };
   }
 

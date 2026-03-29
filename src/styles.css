@@ -262,28 +262,6 @@ small {
   padding: 10px 14px;
 }
 
-.approval-progress {
-  padding: 14px 16px;
-  border: 1px solid var(--line);
-  border-radius: 18px;
-  background: var(--surface-soft);
-}
-
-.progress-track {
-  width: 100%;
-  height: 8px;
-  margin-top: 10px;
-  border-radius: 999px;
-  background: rgba(122, 97, 105, 0.16);
-  overflow: hidden;
-}
-
-.progress-fill {
-  height: 100%;
-  border-radius: inherit;
-  background: linear-gradient(90deg, var(--good) 0%, #5bb89a 100%);
-  transition: width 220ms ease;
-}
 
 .primary-button {
   background: linear-gradient(135deg, #1d7a5f 0%, #145242 100%);
