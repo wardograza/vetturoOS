@@ -351,19 +351,21 @@ small {
   display: inline-flex !important;
   align-items: center;
   gap: 6px;
+  flex-wrap: wrap;
 }
 
 .info-hint {
   position: relative;
   display: inline-flex;
-  width: 16px;
-  height: 16px;
+  flex: 0 0 auto;
+  width: 15px;
+  height: 15px;
   align-items: center;
   justify-content: center;
   border: 1px solid var(--line);
   border-radius: 999px;
   color: var(--text-soft);
-  font-size: 0.7rem;
+  font-size: 0.66rem;
   line-height: 1;
   background: rgba(255, 255, 255, 0.5);
   cursor: help;
@@ -371,26 +373,28 @@ small {
 
 .info-hint-bubble {
   position: absolute;
-  left: calc(100% + 10px);
-  top: 50%;
+  left: -4px;
+  top: calc(100% + 8px);
   z-index: 12;
-  width: 240px;
-  padding: 10px 12px;
+  width: 180px;
+  padding: 8px 10px;
   border: 1px solid var(--line);
-  border-radius: 12px;
+  border-radius: 10px;
   background: var(--surface-strong);
   color: var(--text);
   box-shadow: var(--shadow-soft);
   opacity: 0;
   pointer-events: none;
-  transform: translateY(-50%) translateX(-4px);
+  font-size: 0.72rem;
+  line-height: 1.35;
+  transform: translateY(-4px);
   transition: opacity 140ms ease, transform 140ms ease;
 }
 
 .info-hint:hover .info-hint-bubble,
 .info-hint:focus .info-hint-bubble {
   opacity: 1;
-  transform: translateY(-50%) translateX(0);
+  transform: translateY(0);
 }
 
 .metric-card strong {
