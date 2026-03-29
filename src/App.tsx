@@ -128,6 +128,11 @@ interface TenantDetailState {
   tenantId: string | null;
 }
 
+interface LeasingDetailState {
+  open: boolean;
+  leasingId: string | null;
+}
+
 const navItems: NavPage[] = [
   "Overview",
   "Profile",
@@ -706,6 +711,7 @@ function App() {
   const [taskManageDraft, setTaskManageDraft] = useState<TaskManageDraft>(defaultTaskManageDraft);
   const [taskFilters, setTaskFilters] = useState<TaskFilters>(defaultTaskFilters);
   const [taskSectionState, setTaskSectionState] = useState({ my: true, dept: true, live: true });
+  const [leasingDetailState, setLeasingDetailState] = useState<LeasingDetailState>({ open: false, leasingId: null });
 
   useEffect(() => {
     if (!supabase) {
@@ -772,7 +778,7 @@ function App() {
   }
 
   useEffect(() => {
-    if (!session) {
+    if (!session?.user?.id) {
       setWorkspace(null);
       setActivePage("Overview");
       setTaskFilters(defaultTaskFilters);
@@ -789,7 +795,7 @@ function App() {
     setTaskFilters(defaultTaskFilters);
     setTaskSectionState({ my: true, dept: true, live: true });
     void loadWorkspace();
-  }, [session]);
+  }, [session?.user?.id]);
 
   useEffect(() => {
     if (!session) {
@@ -1036,6 +1042,11 @@ function App() {
       return stats && typeof stats === "object" ? (stats as Record<string, unknown>) : null;
     },
     [detailTenant],
+  );
+
+  const selectedLeasingRecord = useMemo(
+    () => leasingIntel.find((item) => item.id === leasingDetailState.leasingId) ?? null,
+    [leasingDetailState.leasingId, leasingIntel],
   );
 
   const selectedTask = useMemo(
@@ -1471,7 +1482,7 @@ function App() {
     setSavingState("leasing");
 
     try {
-      const result = await callApi<{ analysis?: { summary?: string; recommendation?: string } }>("/api/leasing-intel", leasingDraft);
+      const result = await callApi<{ id?: string; analysis?: { summary?: string; recommendation?: string } }>("/api/leasing-intel", leasingDraft);
       setLeasingDraft(defaultLeasingDraft);
       pushBot(
         "assistant",
@@ -1480,6 +1491,9 @@ function App() {
           : "Leasing research complete and saved into Decision DNA.",
       );
       await loadWorkspace();
+      if (result.id) {
+        setLeasingDetailState({ open: true, leasingId: result.id });
+      }
     } catch (error) {
       setWorkspaceError(error instanceof Error ? error.message : "Leasing intel save failed.");
     } finally {
@@ -1809,6 +1823,7 @@ function App() {
             setConfigDraft={setConfigDraft}
             setInviteDraft={setInviteDraft}
             setLeasingDraft={setLeasingDraft}
+            setLeasingDetailState={setLeasingDetailState}
             setManagedUserDraft={setManagedUserDraft}
             setProfileDraft={setProfileDraft}
             setRevenueSearch={setRevenueSearch}
@@ -2116,6 +2131,58 @@ function App() {
           </section>
         </div>
       ) : null}
+
+      {selectedLeasingRecord ? (
+        <div className="modal-scrim" onClick={() => setLeasingDetailState({ open: false, leasingId: null })}>
+          <section className="modal-card tenant-modal" onClick={(event) => event.stopPropagation()}>
+            <div className="panel-header">
+              <div>
+                <p className="panel-kicker">Leasing Intel</p>
+                <h3>{selectedLeasingRecord.candidateBrandName}</h3>
+              </div>
+              <button className="icon-button" onClick={() => setLeasingDetailState({ open: false, leasingId: null })} type="button">
+                ×
+              </button>
+            </div>
+            <div className="thread-list">
+              <div className="mini-stats four-up">
+                <MetricCard label="Fit Score" value={String(selectedLeasingRecord.totalScore)} note="Overall Decision DNA score" />
+                <MetricCard label="Synergy" value={String(selectedLeasingRecord.categorySynergy)} note="Category and adjacency fit" />
+                <MetricCard label="Technical" value={String(selectedLeasingRecord.technicalFit)} note="Likely unit feasibility" />
+                <MetricCard label="Financial" value={String(selectedLeasingRecord.financialHealth)} note="Commercial strength" />
+              </div>
+              <div className="thread-card">
+                <strong>Recommendation</strong>
+                <p>
+                  {selectedLeasingRecord.recommendation}
+                  {selectedLeasingRecord.targetUnit ? ` • Target ${selectedLeasingRecord.targetUnit}` : ""}
+                  {selectedLeasingRecord.replacementBrand ? ` • Replace ${selectedLeasingRecord.replacementBrand}` : ""}
+                </p>
+                <small>{selectedLeasingRecord.category || "Unspecified category"}</small>
+              </div>
+              <div className="thread-card">
+                <strong>Research Summary</strong>
+                <p>{selectedLeasingRecord.researchSummary || "No written summary was returned for this run."}</p>
+              </div>
+              <div className="graph-card">
+                <strong>Decision DNA Breakdown</strong>
+                <BarMetric label="Category synergy" value={selectedLeasingRecord.categorySynergy} max={100} />
+                <BarMetric label="Technical fit" value={selectedLeasingRecord.technicalFit} max={100} />
+                <BarMetric label="Financial health" value={selectedLeasingRecord.financialHealth} max={100} />
+                <BarMetric label="Cannibalization risk" value={selectedLeasingRecord.cannibalizationRisk} max={100} />
+              </div>
+              <div className="thread-card">
+                <strong>Demand Signals</strong>
+                <p>{selectedLeasingRecord.demandSignals?.join(" • ") || "No demand signals captured yet."}</p>
+              </div>
+              <div className="thread-card">
+                <strong>Sources</strong>
+                <p>{selectedLeasingRecord.sources?.join(" • ") || "No cited sources were returned for this run."}</p>
+              </div>
+            </div>
+          </section>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -2144,6 +2211,7 @@ interface PageRendererProps {
   setConfigDraft: React.Dispatch<React.SetStateAction<ConfigDraft>>;
   setInviteDraft: React.Dispatch<React.SetStateAction<InviteDraft>>;
   setLeasingDraft: React.Dispatch<React.SetStateAction<LeasingDraft>>;
+  setLeasingDetailState: React.Dispatch<React.SetStateAction<LeasingDetailState>>;
   setManagedUserDraft: React.Dispatch<React.SetStateAction<ManagedUserDraft>>;
   setProfileDraft: React.Dispatch<React.SetStateAction<ProfileDraft>>;
   setRevenueSearch: React.Dispatch<React.SetStateAction<string>>;
@@ -2226,6 +2294,7 @@ function PageRenderer(props: PageRendererProps) {
     setConfigDraft,
     setInviteDraft,
     setLeasingDraft,
+    setLeasingDetailState,
     setManagedUserDraft,
     setProfileDraft,
     setRevenueSearch,
@@ -2892,7 +2961,12 @@ function PageRenderer(props: PageRendererProps) {
           <div className="thread-list">
             {leasingIntel.length > 0 ? (
               leasingIntel.map((item) => (
-                <div className="thread-card" key={item.id}>
+                <button
+                  className="thread-card interactive-row"
+                  key={item.id}
+                  onClick={() => setLeasingDetailState({ open: true, leasingId: item.id })}
+                  type="button"
+                >
                   <div className="thread-topline">
                     <strong>{item.candidateBrandName}</strong>
                     <span className={`badge ${item.totalScore >= 70 ? "good" : "warn"}`}>{item.recommendation}</span>
@@ -2909,7 +2983,7 @@ function PageRenderer(props: PageRendererProps) {
                   {item.demandSignals?.length ? (
                     <small>Demand signals: {item.demandSignals.join(" • ")}</small>
                   ) : null}
-                </div>
+                </button>
               ))
             ) : (
               <div className="empty-row">No brand-vetting research has been saved yet.</div>

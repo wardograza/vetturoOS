@@ -40,8 +40,19 @@ export default async function handler(req, res) {
   }
 
   try {
-    const user = await getUserFromBearerToken(req);
-    const body = await readJsonBody(req);
+    let user = null;
+    try {
+      user = await getUserFromBearerToken(req);
+    } catch {
+      user = null;
+    }
+
+    let body = {};
+    try {
+      body = await readJsonBody(req);
+    } catch {
+      body = {};
+    }
     const isUpdateAction = body.action === "update_task";
 
     if (isUpdateAction) {
