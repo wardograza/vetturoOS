@@ -317,6 +317,8 @@ function getPermissionLabel(permission: string) {
     task_scope_my: "My Tasks",
     task_scope_department: "Dept Tasks",
     task_scope_all: "Live Tasks",
+    delete_tasks: "Delete Tasks",
+    manage_memory: "Manage Memory",
     view_leasing_intel: "Leasing Intel",
     manage_configs: "Configs",
     invite_users: "Invite User",
@@ -1071,7 +1073,16 @@ function App() {
       body: JSON.stringify(body),
     });
 
-    const json = (await response.json()) as T & { error?: string };
+    const rawText = await response.text();
+    let json = {} as T & { error?: string };
+
+    if (rawText) {
+      try {
+        json = JSON.parse(rawText) as T & { error?: string };
+      } catch {
+        throw new Error(rawText);
+      }
+    }
 
     if (!response.ok) {
       throw new Error(json.error || `Request failed: ${path}`);
@@ -1106,6 +1117,12 @@ function App() {
     setLoginError(null);
 
     let loginEmailAddress = loginEmail.trim();
+
+    if (loginEmailAddress.includes("@")) {
+      setLoginError("Sign in using your username, not your email address.");
+      setSubmittingLogin(false);
+      return;
+    }
 
     if (!loginEmailAddress.includes("@")) {
       const lookupResponse = await fetch("/api/profile-update", {
@@ -1364,6 +1381,41 @@ function App() {
         error instanceof Error
           ? `Task update failed. ${humanizeErrorMessage(error.message)}`
           : "Task update failed. Please review the task details and try again.",
+      );
+    } finally {
+      setSavingState(null);
+    }
+  }
+
+  async function handleTaskDelete() {
+    if (!selectedTask) {
+      return;
+    }
+
+    if (typeof window !== "undefined") {
+      const confirmed = window.confirm(`Delete task "${selectedTask.title}"? This action cannot be undone from the UI.`);
+      if (!confirmed) {
+        return;
+      }
+    }
+
+    setWorkspaceError(null);
+    setSavingState("task-delete");
+
+    try {
+      await callApi("/api/tasks", {
+        action: "delete_task",
+        taskId: selectedTask.id,
+      });
+      pushBot("assistant", `Task "${selectedTask.title}" has been deleted.`);
+      setTaskManageDraft(defaultTaskManageDraft);
+      setTaskDetailId(null);
+      await loadWorkspace();
+    } catch (error) {
+      setWorkspaceError(
+        error instanceof Error
+          ? `Task delete failed. ${humanizeErrorMessage(error.message)}`
+          : "Task delete failed. Please try again.",
       );
     } finally {
       setSavingState(null);
@@ -2035,6 +2087,16 @@ function App() {
               <button className="primary-button full-width" disabled={savingState === "task-manage"} type="submit">
                 {savingState === "task-manage" ? "Saving…" : "Update task"}
               </button>
+              {currentProfile?.role === "super_admin" || currentProfile?.permissions.includes("delete_tasks") ? (
+                <button
+                  className="secondary-button full-width danger-button"
+                  disabled={savingState === "task-delete"}
+                  onClick={() => void handleTaskDelete()}
+                  type="button"
+                >
+                  {savingState === "task-delete" ? "Deleting…" : "Delete task"}
+                </button>
+              ) : null}
             </form>
             <div className="thread-list top-gap">
               {selectedTask.eventLog.length > 0 ? (
@@ -2536,6 +2598,8 @@ function PageRenderer(props: PageRendererProps) {
     const taskAssigneeOptions = profiles
       .filter((profile) => String(profile.availabilityStatus || "").toLowerCase() !== "pto")
       .map((profile) => ({ id: profile.id, label: profile.fullName }));
+    const canFilterByAssignee = taskScopeAccess.canSeeDept || taskScopeAccess.canSeeLive;
+    const canFilterByDepartment = taskScopeAccess.canSeeLive;
 
     return (
       <section className="content-grid balanced">
@@ -2556,25 +2620,29 @@ function PageRenderer(props: PageRendererProps) {
                 ))}
               </select>
             </label>
-            <label className="field">
-              <span>Assignee</span>
-              <select value={taskFilters.assigneeId} onChange={(event) => setTaskFilters((draft) => ({ ...draft, assigneeId: event.target.value }))}>
-                <option value="all">Everyone</option>
-                <option value="">Unassigned</option>
-                {taskAssigneeOptions.map((option) => (
-                  <option key={option.id} value={option.id}>{option.label}</option>
-                ))}
-              </select>
-            </label>
-            <label className="field">
-              <span>Department</span>
-              <select value={taskFilters.department} onChange={(event) => setTaskFilters((draft) => ({ ...draft, department: event.target.value }))}>
-                <option value="all">All departments</option>
-                {["facilities", "finance", "leasing", "operations"].map((option) => (
-                  <option key={option} value={option}>{toTitle(option)}</option>
-                ))}
-              </select>
-            </label>
+            {canFilterByAssignee ? (
+              <label className="field">
+                <span>Assignee</span>
+                <select value={taskFilters.assigneeId} onChange={(event) => setTaskFilters((draft) => ({ ...draft, assigneeId: event.target.value }))}>
+                  <option value="all">Everyone</option>
+                  <option value="">Unassigned</option>
+                  {taskAssigneeOptions.map((option) => (
+                    <option key={option.id} value={option.id}>{option.label}</option>
+                  ))}
+                </select>
+              </label>
+            ) : null}
+            {canFilterByDepartment ? (
+              <label className="field">
+                <span>Department</span>
+                <select value={taskFilters.department} onChange={(event) => setTaskFilters((draft) => ({ ...draft, department: event.target.value }))}>
+                  <option value="all">All departments</option>
+                  {["facilities", "finance", "leasing", "operations"].map((option) => (
+                    <option key={option} value={option}>{toTitle(option)}</option>
+                  ))}
+                </select>
+              </label>
+            ) : null}
           </div>
           <div className="thread-list">
             {taskScopes.canSeeMy ? (

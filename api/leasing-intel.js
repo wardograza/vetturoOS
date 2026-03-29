@@ -14,6 +14,18 @@ function trimList(value) {
   return value.map((item) => String(item || "").trim()).filter(Boolean);
 }
 
+function safeParseJson(text) {
+  if (!(typeof text === "string" && text.trim())) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
+}
+
 function buildTenantContext(tenants) {
   return tenants.map((tenant) => ({
     brandName: tenant.brand_name,
@@ -91,7 +103,27 @@ export default async function handler(req, res) {
       });
     }
 
-    const parsed = JSON.parse(analysisReply);
+    const parsed =
+      safeParseJson(analysisReply) ||
+      {
+        summary: analysisReply || "Leasing research completed, but the response came back in a partial format.",
+        categorySynergy: 0,
+        technicalFit: 0,
+        financialHealth: 0,
+        cannibalizationRisk: 0,
+        fitScore: 0,
+        recommendation: "Review",
+        targetUnit,
+        replacementBrand,
+        demandSignals: [],
+        adjacencyNotes: "",
+        replacementRationale: "",
+        footfallPotential: "",
+        revenuePotential: "",
+        whyNow: "",
+        risks: [],
+        sources: [],
+      };
     const payload = {
       candidate_brand_name: candidateBrandName,
       category: category || "Unspecified",

@@ -68,21 +68,36 @@ export async function createTaskRecord({ admin, actorId, body }) {
   };
 
   const payloadVariants = [
-    basePayload,
-    { ...basePayload, created_by: undefined },
-    { ...basePayload, sla_due_at: null },
-    { ...basePayload, assigned_to: null, status: "open" },
+    { payload: basePayload, keepsAssignment: Boolean(basePayload.assigned_to) },
     {
-      title,
-      description: basePayload.description,
-      department,
-      priority,
-      status: "open",
+      payload: { ...basePayload, created_by: undefined },
+      keepsAssignment: Boolean(basePayload.assigned_to),
     },
     {
-      title,
-      department,
-      status: "open",
+      payload: { ...basePayload, sla_due_at: null },
+      keepsAssignment: Boolean(basePayload.assigned_to),
+    },
+    {
+      payload: { ...basePayload, assigned_to: null, status: "open" },
+      keepsAssignment: false,
+    },
+    {
+      payload: {
+        title,
+        description: basePayload.description,
+        department,
+        priority,
+        status: "open",
+      },
+      keepsAssignment: false,
+    },
+    {
+      payload: {
+        title,
+        department,
+        status: "open",
+      },
+      keepsAssignment: false,
     },
   ];
 
@@ -90,32 +105,46 @@ export async function createTaskRecord({ admin, actorId, body }) {
 
   for (const variant of payloadVariants) {
     const sanitized = Object.fromEntries(
-      Object.entries(variant).filter(([, value]) => value !== undefined),
+      Object.entries(variant.payload).filter(([, value]) => value !== undefined),
     );
 
     const { error } = await admin.from("tasks").insert(sanitized);
     if (!error) {
       const createdTask = await admin
         .from("tasks")
-        .select("id")
+        .select("id, assigned_to, status, sla_due_at")
         .order("created_at", { ascending: false })
         .limit(1)
         .maybeSingle();
 
       const taskId = createdTask.data?.id || null;
+      let finalAssignedToId = (createdTask.data?.assigned_to as string | null) || null;
+      let finalStatus = (createdTask.data?.status as string | null) || "open";
+
+      if (taskId && assignee && !finalAssignedToId && !variant.keepsAssignment) {
+        const assignResult = await admin
+          .from("tasks")
+          .update({ assigned_to: assignee.id, status: "assigned" })
+          .eq("id", taskId);
+
+        if (!assignResult.error) {
+          finalAssignedToId = assignee.id;
+          finalStatus = "assigned";
+        }
+      }
 
       if (taskId) {
         await admin.from("task_events").insert({
           task_id: taskId,
           event_type: "created",
-          event_message: assignee
+          event_message: finalAssignedToId
             ? `Task created and assigned to ${assignee.full_name || "the selected user"}.`
             : "Task created and left unassigned.",
           created_by: actorId || null,
           payload: {
             department,
             priority,
-            assignedToId: assignee?.id || null,
+            assignedToId: finalAssignedToId,
             slaDueAt: normalizedSlaDueAt,
           },
         });
@@ -123,10 +152,10 @@ export async function createTaskRecord({ admin, actorId, body }) {
 
       return {
         id: taskId,
-        assignedToId: assignee?.id || null,
-        assignedToName: assignee?.full_name || null,
-        status: assignee ? "assigned" : "open",
-        message: assignee
+        assignedToId: finalAssignedToId,
+        assignedToName: finalAssignedToId ? assignee?.full_name || null : null,
+        status: finalStatus,
+        message: finalAssignedToId
           ? `Task created and assigned to ${assignee.full_name || "the selected user"}.`
           : "Task created and added to the queue without an assignee.",
       };

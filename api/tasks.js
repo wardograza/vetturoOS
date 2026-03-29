@@ -18,7 +18,6 @@ async function updateTaskRecord(taskId, updates) {
     Object.fromEntries(
       Object.entries(updates).filter(([key]) => key !== "priority" && key !== "sla_due_at"),
     ),
-    Object.fromEntries(Object.entries(updates).filter(([key]) => key !== "assigned_to")),
   ].filter((variant) => Object.keys(variant).length > 0);
 
   let lastError = null;
@@ -83,6 +82,19 @@ export default async function handler(req, res) {
           created_by: user?.id || null,
           payload: null,
         });
+      }
+
+      return sendJson(res, 200, { ok: true });
+    }
+
+    if (body.action === "delete_task") {
+      if (!body.taskId) {
+        return sendJson(res, 400, { error: "Task id is required to delete a task." });
+      }
+
+      const { error } = await admin.from("tasks").delete().eq("id", body.taskId);
+      if (error) {
+        throw error;
       }
 
       return sendJson(res, 200, { ok: true });

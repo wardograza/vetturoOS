@@ -133,6 +133,8 @@ export const invitePermissionOptions = [
   "task_scope_my",
   "task_scope_department",
   "task_scope_all",
+  "delete_tasks",
+  "manage_memory",
   "view_leasing_intel",
   "manage_configs",
   "invite_users",
